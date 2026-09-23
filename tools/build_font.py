@@ -125,7 +125,7 @@ def glyphs():
     # punctuation
     dot = 170
     g['period'] = (dot, [rect(0, 0, dot, dot)])
-    g['comma'] = (dot, [rect(0, 20, dot, dot), stroke(20, -150, 20, 20, dot - 60)])
+    g['comma'] = (dot, [rect(0, 0, dot, dot), poly((dot - 70, 10), (dot, 10), (dot - 40, -190), (dot - 110, -190))])
     g['hyphen'] = (460, [rect(0, M - 70 - T / 2, 460, M - 70 + T / 2)])
     g['colon'] = (dot, [rect(0, 0, dot, dot), rect(0, 380, dot, 380 + dot)])
     g['periodcentered'] = (dot, [rect(0, M - dot / 2, dot, M + dot / 2)])
@@ -148,6 +148,27 @@ CMAP = {**{c: c for c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'},
         '/': 'slash', '!': 'exclam', "'": 'quotesingle', '’': 'quoteright', '‘': 'quoteleft', '“': 'quotedblleft',
         '”': 'quotedblright', '&': 'ampersand', ' ': 'space', ' ': 'space'}
 CMAP.update({c.lower(): c for c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'})   # the site sets display text in caps
+
+
+_OPEN_R = ['T', 'V', 'W', 'Y', 'F', 'P']          # letters with space at the lower right
+_OPEN_L = ['A', 'V', 'W', 'Y', 'J']
+KERN = {}
+for l in ['A']:
+    for r in ['V', 'W', 'Y', 'T']:
+        KERN[(l, r)] = -70 if r != 'T' else -40
+for l in ['V', 'W', 'Y']:
+    for r in ['A', 'period', 'comma']:
+        KERN[(l, r)] = -80 if r == 'A' else -110
+    KERN[(l, 'O')] = -20
+for l in ['T']:
+    for r in ['A', 'period', 'comma', 'O']:
+        KERN[(l, r)] = -60 if r != 'O' else -20
+for l in ['P', 'F']:
+    for r in ['A', 'period', 'comma']:
+        KERN[(l, r)] = -60 if r == 'A' else -90
+KERN[('L', 'T')] = -60; KERN[('L', 'V')] = -70; KERN[('L', 'Y')] = -70
+KERN[('X', 'comma')] = -40; KERN[('X', 'period')] = -40
+KERN[('R', 'Y')] = -20; KERN[('R', 'V')] = -20
 
 
 def area(c):
@@ -200,6 +221,13 @@ def build(italic):
     fb.setupOS2(sTypoAscender=900, sTypoDescender=-220, sTypoLineGap=0, usWinAscent=940, usWinDescent=260,
                 sCapHeight=CAP, sxHeight=CAP, usWeightClass=900, usWidthClass=9, fsSelection=0x01 if italic else 0x40)
     fb.setupPost(italicAngle=-11 if italic else 0)
+    if italic:
+        fb.font['head'].macStyle |= 0x02
+    # Kerning for the open diagonal and overhanging shapes (units of 1000/em).
+    fea = 'languagesystem DFLT dflt;\nfeature kern {\n' + ''.join(
+        f'  pos {a} {b} {v};\n' for (a, b), v in KERN.items()) + '} kern;\n'
+    from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
+    addOpenTypeFeaturesFromString(fb.font, fea)
     fb.font.flavor = 'woff2'
     path = os.path.join(OUT, 'pk-wide-italic.woff2' if italic else 'pk-wide.woff2')
     fb.save(path)

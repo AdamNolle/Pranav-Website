@@ -17,6 +17,10 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
 5. **Texture quality everywhere:** no visible tiling, banding, aliasing, blur or stretching on the car, metal cards, smoke sprites, logos or portrait. Check each at 2× DPR.
 
 ## Done (2026-09-23)
+- **PK Wide refinements:**
+  - a proper wedge comma
+  - an OpenType kern feature with about 40 pairs (AV/VA/TY/LT, punctuation after diagonals), verified in Brave (AVA 310 → 293 px)
+  - italic flag fixed
 - **Rear-wing endplates:** J.B. Hunt (0.48 m) and the Georgia Tech wordmark (0.46 m) are sized to the plate, legible at hero scale, and checked in a Cycles close-up.
 - **Custom font:** PK Wide, an original extended display face with regular and italic, about 2 KB each (`tools/build_font.py`). It's now the site's display font; the official Formula1 fonts can still be swapped in via `tools/install_f1_fonts.py`.
 - **Wind tunnel:** switched to a fixed-timestep solver. Desktop now holds 59–60 fps with p99 frame time 16.8 ms, and the shaking is gone.
@@ -34,7 +38,6 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
   - Phones get a light render path; `car.glb` is 1.08 MB.
 
 ## Also open
-- PK Wide: the comma is small at headline sizes; add kerning pairs (e.g. AV, VA, TY) and check the italic.
 - LCP is still just over 2.5 s on throttled mobile, because the intro holds the name back. Consider painting the name immediately in a dimmed state.
 - Car textures: try KTX2/Basis once an encoder is installed (livery set is WebP at 4K wide).
 - Measure contrast by eye over the moving smoke and metal (axe can't measure over canvases).
