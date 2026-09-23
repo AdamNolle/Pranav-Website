@@ -1,3 +1,7 @@
+/* PK Wide: original extended display face (tools/build_font.py), ~2 KB per style. */
+@font-face { font-family: 'PK Wide'; src: url('assets/fonts/pk-wide.woff2') format('woff2'); font-weight: 100 1000; font-style: normal; font-display: swap; }
+@font-face { font-family: 'PK Wide'; src: url('assets/fonts/pk-wide-italic.woff2') format('woff2'); font-weight: 100 1000; font-style: italic; font-display: swap; }
+
 :root {
   --acc: #2b7bff;
   --acc-deep: #0b3a9e;
@@ -13,7 +17,7 @@
   --rule: rgba(190,210,240,0.12);
   --mono: 'JetBrains Mono', monospace;
   /* assets/fonts/f1.css overrides these three with the Formula1 family when installed. */
-  --display: 'Anybody', sans-serif;
+  --display: 'PK Wide', 'Anybody', sans-serif;
   --text: 'Titillium Web', sans-serif;
   --display-style: normal;
   /* F1 Display Wide stand-in: Anybody at full width, upright, tight tracking. */
