@@ -1061,28 +1061,39 @@ function readInputs(dt) {
 function frame(now) {
   raf = requestAnimationFrame(frame);
   if (now - lastRender < 12) return;          // cap at ~60 Hz on high-refresh screens
-  const dt = Math.min(1 / 30, Math.max(0.001, (now - (last || now - 16)) / 1000));
+  // Fixed-timestep solver: the fluid always advances in exact 1/60 s steps and frame-time
+  // wobble is absorbed by the accumulator, so jittery frames no longer shake the smoke.
+  const real = Math.min(0.1, Math.max(0, (now - (last || now - FIXED * 1000)) / 1000));
   last = now; lastRender = now;
+  acc = Math.min(acc + real, FIXED * 3);
   const y = scrollY;
   let dy = y - st.scroll;
   st.scrollPrev = st.scroll; st.scroll = y;
   if (Math.abs(dy) > dims.H * 0.9) { dy = 0; st.scrollPrev = y; prefill(); }
-  readInputs(dt);
-  st.time += dt; st.frame++;
-  step(dt, dy);
+  readInputs(real);
+  const n = Math.max(1, Math.min(2, Math.floor(acc / FIXED)));
+  acc = Math.max(0, acc - n * FIXED);
+  for (let i = 0; i < n; i++) {
+    st.time += FIXED; st.frame++;
+    step(FIXED, i === 0 ? dy : 0);              // scroll re-projection applied once per frame
+  }
+  const dt = real;
   const base = Math.max(1.1, Math.min(2.6, dims.W / 600));
   window.__windFlow = { speed: Math.min(1, freeStream() / (base * 4)), gust: Math.min(1, st.gust) };
   render();
   if (!shown) { shown = true; canvas.style.opacity = '1'; }
   // adaptive quality: shed pressure iterations and particle draws if frames run long
-  slow = dt > 0.024 ? slow + 1 : Math.max(0, slow - 2);
+  frameEma += (dt - frameEma) * 0.1;
+  slow = frameEma > 0.022 ? slow + 1 : Math.max(0, slow - 2);
   if (slow > 90) {
     slow = 0;
     if (S.iters > 10) S.iters -= 4;
     else { S.parts.draw = Math.max(3000, Math.round(S.parts.draw * 0.7)); }
   }
 }
-function start() { if (!raf && alive && glOK && !frozen && !document.hidden) { last = 0; raf = requestAnimationFrame(frame); } }
+const FIXED = 1 / 60;
+let acc = 0, frameEma = 1 / 60;
+function start() { if (!raf && alive && glOK && !frozen && !document.hidden) { last = 0; acc = FIXED; raf = requestAnimationFrame(frame); } }
 function stop() { cancelAnimationFrame(raf); raf = 0; }
 
 // Reduced motion: settle the flow offscreen, show one still frame; refresh after scrolling stops.
