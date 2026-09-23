@@ -1407,14 +1407,14 @@ def build_halo():
     full = half + [(x, -y, z) for x, y, z in reversed(half[:-1])]
     path = smooth_path(full, 6)
     prof = ellipse(0.021, 0.026, 18)
-    halo = sweep('Halo', path, prof, [M['ti']], up=(1, 0, 0))
+    halo = sweep('Halo', path, prof, [M['black']], up=(1, 0, 0))   # painted, as on 2024-25 cars
     # carbon aero fairing on top of the hoop
     top = [p for p in path if p[2] > 0.80]
     fpath = [(p[0], p[1], p[2] + 0.02) for p in top]
-    sweep('HaloFairing', fpath, [(u * 0.008, v * 0.03) for u, v in ellipse(1, 1, 16)], [M['black']], up=(0, 0, 1))
+    sweep('HaloFairing', fpath, [(u * 0.008, v * 0.03) for u, v in ellipse(1, 1, 16)], [M['carbon']], up=(0, 0, 1))
     # central pillar (blade section) down to the chassis
     pp = smooth_path([(0.885, 0.0, 0.845), (0.95, 0.0, 0.80), (1.04, 0.0, 0.71), (1.10, 0.0, 0.64)], 8)
-    sweep('HaloPillar', pp, [(u * 0.02, v * 0.034) for u, v in ellipse(1, 1, 16)], [M['ti']], up=(0, 1, 0))
+    sweep('HaloPillar', pp, [(u * 0.02, v * 0.034) for u, v in ellipse(1, 1, 16)], [M['black']], up=(0, 1, 0))
     return halo
 
 
