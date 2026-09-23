@@ -1178,9 +1178,11 @@ def setup_livery():
 
 # ---------------------------------------------------------------- engine-cover fin
 def fin_outline():
-    top = [(0.02, 0.938), (-0.30, 0.905), (-0.70, 0.846), (-1.10, 0.782), (-1.45, 0.722), (-1.60, 0.70)]
-    te = [(-1.645, 0.672), (-1.66, BODY(-1.66)['zr'] - 0.02)]
-    bottom = [(x, BODY(x)['zr'] - 0.035) for x in np.linspace(-1.62, -0.2, 10)] + [(-0.1, 0.80), (0.0, 0.86)]
+    # 2024-25 style: a slim fin that tracks the engine cover (7 cm proud, tapering to 3 cm)
+    xs = [0.02, -0.30, -0.70, -1.10, -1.40, -1.55]
+    top = [(0.02, 0.938)] + [(x, float(BODY(x)['zr']) + 0.075 - 0.03 * (-x / 1.55)) for x in xs[1:]]
+    te = [(-1.585, float(BODY(-1.585)['zr']) + 0.02), (-1.60, BODY(-1.60)['zr'] - 0.02)]
+    bottom = [(x, BODY(x)['zr'] - 0.035) for x in np.linspace(-1.58, -0.2, 10)] + [(-0.1, 0.80), (0.0, 0.86)]
     return top + te + bottom
 
 
@@ -1763,8 +1765,9 @@ def livery():
     # 6) driver name on the cockpit flanks, number on the nose, PK + number on the fin
     for s, d in side_views:
         type_decal('name_%d' % s, 'P. KONDAPANENI', WHITE, [airbox], (-0.02, s * 0.5, 0.878), d, (-0.05, 0, 1), 0.032, spacing=1.12)
-        type_decal('fin_pk_%d' % s, 'PK', WHITE, [fin], (-0.80, s * 0.3, 0.845), d, (0.1, 0, 1), 0.075, shear=0.18)
-        type_decal('fin_no_%d' % s, NUMBER, WHITE, [fin], (-1.10, s * 0.3, 0.80), d, (0.1, 0, 1), 0.07, shear=0.18)
+        # on the slim fin, sitting in the band just above the engine cover
+        type_decal('fin_pk_%d' % s, 'PK', WHITE, [fin], (-0.62, s * 0.3, float(BODY(-0.62)['zr']) + 0.038), d, (0.1, 0, 1), 0.05, shear=0.18)
+        type_decal('fin_no_%d' % s, NUMBER, WHITE, [fin], (-0.92, s * 0.3, float(BODY(-0.92)['zr']) + 0.034), d, (0.1, 0, 1), 0.046, shear=0.18)
 
 
 print('painting livery texture set ...')
