@@ -286,12 +286,14 @@ void main(){
     sd = min(sd, gs);
     // halo for page text: dilate the G coverage a few CSS px
     float h = g.g;
-    float r1 = 2.5 / uPxCss, r2 = 5.5 / uPxCss;
+    // wider, softer halo so smoke never sits directly behind reading text (contrast)
+    float r1 = 4. / uPxCss, r2 = 9. / uPxCss, r3 = 16. / uPxCss;
     for (int k = 0; k < 8; k++){
       float a = float(k) * .785398;
       vec2 dir = vec2(cos(a), sin(a));
-      h = max(h, .9 * texelFetch(uGlyph, clamp(ip + ivec2(dir * r1 + .5), ivec2(0), mx), 0).g);
-      h = max(h, .55 * texelFetch(uGlyph, clamp(ip + ivec2(dir * r2 + .5), ivec2(0), mx), 0).g);
+      h = max(h, .95 * texelFetch(uGlyph, clamp(ip + ivec2(dir * r1 + .5), ivec2(0), mx), 0).g);
+      h = max(h, .7 * texelFetch(uGlyph, clamp(ip + ivec2(dir * r2 + .5), ivec2(0), mx), 0).g);
+      h = max(h, .4 * texelFetch(uGlyph, clamp(ip + ivec2(dir * r3 + .5), ivec2(0), mx), 0).g);
     }
     dim = max(dim, h);
   }
@@ -1003,7 +1005,7 @@ function render() {
   R.render.use().t('uDye', S.dye.read.tex).t('uGlow', S.glow.tex).t('uVel', S.vel.read.tex).t('uMask', S.mask.tex).t('uUV', S.uv.read.tex)
     .t('uWisp', wisp || S.glow.tex)
     .f('uDyeRes', d.dw, d.dh).f('uGlowRes', S.glow.w, S.glow.h).f('uView', W, H).f('uFreeMag', freeStream())
-    .f('uTime', st.time).f('uLaserY', laserY).f('uLaserW', laserW).f('uGain', 1.0).f('uDim', 0.22)
+    .f('uTime', st.time).f('uLaserY', laserY).f('uLaserW', laserW).f('uGain', 0.85).f('uDim', 0.08)
     .f('uCarRect', ...carRect()).f('uPhase', S.phase || 0).f('uWispK', 0.5).f('uHasWisp', wisp ? 1 : 0).f('uDebug', api.debug ? 1 : 0);
   draw(null);
   if (api.debug) return;
@@ -1014,7 +1016,7 @@ function render() {
     gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     const puff = (pl, alpha, size, grow) => {
       R.puff.use().t('uVel', S.vel.read.tex).t('uMask', S.mask.tex).t('uAtlas', TEX.atlas).f('uView', W, H)
-        .f('uAlpha', alpha).f('uDim', 0.2).f('uLifeMin', pl.lifeMin).f('uLifeMax', pl.lifeMax).f('uSize', size).f('uGrow', grow).f('uTime', st.time);
+        .f('uAlpha', alpha).f('uDim', 0.08).f('uLifeMin', pl.lifeMin).f('uLifeMax', pl.lifeMax).f('uSize', size).f('uGrow', grow).f('uTime', st.time);
       gl.bindVertexArray(pl.a.drw);
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, pl.draw);
     };
@@ -1026,7 +1028,7 @@ function render() {
   if (TEX.motes) {
     gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
     R.pdraw.use().t('uVel', S.vel.read.tex).t('uMask', S.mask.tex).t('uMotes', TEX.motes).f('uView', W, H)
-      .f('uStreak', 0.022).f('uDpr', d.dpr).f('uLaserY', laserY).f('uLaserW', laserW).f('uAlpha', 0.85).f('uDim', 0.25)
+      .f('uStreak', 0.022).f('uDpr', d.dpr).f('uLaserY', laserY).f('uLaserW', laserW).f('uAlpha', 0.85).f('uDim', 0.1)
       .f('uLifeMin', S.parts.lifeMin).f('uLifeMax', S.parts.lifeMax).f('uSize', 1);
     gl.bindVertexArray(S.parts.a.drw);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, S.parts.draw);

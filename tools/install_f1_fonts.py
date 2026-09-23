@@ -63,7 +63,7 @@ def main(src):
     display = "'Formula1 Wide'" if 'Formula1-Wide' in done else "'Formula1'"
     tokens = (":root {\n"
               f"  --display: {display}, 'Anybody', sans-serif;\n"
-              "  --text: 'Formula1', 'Barlow', sans-serif;\n"
+              "  --text: 'Formula1', 'Titillium Web', sans-serif;\n  --wide: 100;\n  --wide-mid: 100;\n"
               f"  --display-style: {'italic' if 'Formula1-Italic' in done and 'Formula1-Wide' not in done else 'normal'};\n"
               "}\n")
     with open(os.path.join(OUT, 'f1.css'), 'w') as f:

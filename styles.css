@@ -8,14 +8,17 @@
   --fg: #eef2f7;
   --fg-hi: #f6f9fd;
   --fg-soft: #d3dae4;
-  --muted: #98a2b3;
-  --dim: #b7c0cc;
+  --muted: #b3bccb;
+  --dim: #cfd6e0;
   --rule: rgba(190,210,240,0.12);
   --mono: 'JetBrains Mono', monospace;
   /* assets/fonts/f1.css overrides these three with the Formula1 family when installed. */
   --display: 'Anybody', sans-serif;
-  --text: 'Barlow', sans-serif;
-  --display-style: italic;
+  --text: 'Titillium Web', sans-serif;
+  --display-style: normal;
+  /* F1 Display Wide stand-in: Anybody at full width, upright, tight tracking. */
+  --wide: 150;
+  --wide-mid: 130;
   --ease: cubic-bezier(.2,.9,.2,1);
   --pad-x: clamp(20px,4vw,56px);
 
@@ -56,7 +59,7 @@ a:hover { color: var(--acc-glow); }
 }
 
 /* ---------- shared type ---------- */
-.mono { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.mono { font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
 .kicker { margin: 0; font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; color: var(--acc-glow); text-transform: uppercase; display: flex; align-items: center; gap: 12px; }
 .kicker::before { content: ''; width: 28px; height: 2px; background: var(--acc); box-shadow: 0 0 12px var(--acc); }
 
@@ -74,7 +77,7 @@ a:hover { color: var(--acc-glow); }
 .section-title {
   margin: 10px 0 clamp(36px,5vw,64px);
   font-family: var(--display); font-style: var(--display-style); font-weight: 900;
-  font-variation-settings: 'wdth' 112;
+  font-variation-settings: 'wdth' var(--wide);
   font-size: clamp(44px,7vw,108px); line-height: 0.9; text-transform: uppercase;
   width: fit-content; padding-right: 0.1em;
 }
@@ -175,8 +178,28 @@ a:hover { color: var(--acc-glow); }
   border: 1px solid rgba(190,210,240,0.08);
   font-family: var(--mono);
 }
-.hud-leds { display: flex; gap: 4px; justify-content: space-between; }
-.hud-leds span { width: 9px; height: 9px; border-radius: 50%; background: #171b21; box-shadow: inset 0 1px 1px rgba(0,0,0,0.8); }
+/* ---------- redline: steering-wheel shift lights across the full top edge ---------- */
+.redline {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 45; pointer-events: none;
+  display: flex; justify-content: space-between; align-items: center; gap: 3px;
+  height: 12px; padding: 0 clamp(8px,1.2vw,16px);
+  background: linear-gradient(180deg, #030405, #0a0c10);
+  box-shadow: inset 0 -1px 0 rgba(190,210,240,0.08), 0 4px 14px -6px #000;
+}
+.redline i {
+  --c: #35ff75; flex: 1 1 0; max-width: 22px; height: 6px; border-radius: 3px;
+  background: linear-gradient(180deg, #1a1e25, #0e1116);
+  box-shadow: inset 0 1px 1px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.04);
+  transition: background 60ms linear, box-shadow 60ms linear;
+}
+.redline i.r { --c: #ff3b2f; }
+.redline i.b { --c: #4d8dff; }
+.redline i.on {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 45%, #fff), var(--c) 55%, color-mix(in srgb, var(--c) 60%, #000));
+  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--c) 65%, transparent), 0 0 22px 2px color-mix(in srgb, var(--c) 25%, transparent);
+}
+.nav { top: 12px; }
+
 .hud-read { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; }
 .hud-speed { display: flex; align-items: baseline; gap: 6px; }
 .hud-speed b { font-size: 28px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; color: var(--fg-hi); }
@@ -228,8 +251,8 @@ a:hover { color: var(--acc-glow); }
 .hero-name {
   position: relative; z-index: 3; margin: 0;
   font-family: var(--display); font-style: var(--display-style); font-weight: 900;
-  font-variation-settings: 'wdth' 118;
-  font-size: clamp(38px,9.4vw,200px); line-height: 0.88; letter-spacing: -0.01em;
+  font-variation-settings: 'wdth' var(--wide);
+  font-size: clamp(26px,7.4vw,168px); line-height: 0.92; letter-spacing: -0.005em;
   text-transform: uppercase; color: var(--fg-hi);
   filter: drop-shadow(0 18px 28px rgba(0,0,0,0.75));
   width: fit-content;
@@ -292,7 +315,7 @@ a:hover { color: var(--acc-glow); }
 }
 .portrait-number {
   position: absolute; right: 16px; top: 10px; z-index: 0;
-  font-family: var(--display); font-style: var(--display-style); font-weight: 900; font-variation-settings: 'wdth' 125;
+  font-family: var(--display); font-style: var(--display-style); font-weight: 900; font-variation-settings: 'wdth' var(--wide);
   font-size: clamp(90px,12vw,170px); line-height: 1; color: transparent;
   -webkit-text-stroke: 1px rgba(127,176,255,0.35);
 }
@@ -319,7 +342,7 @@ a:hover { color: var(--acc-glow); }
 .stint:hover { transform: translateX(10px); }
 .stint-pos { font-family: var(--display); font-style: var(--display-style); font-weight: 900; font-size: clamp(28px,3vw,40px); color: var(--fg); }
 .stint-pos.lead { color: var(--acc-glow); text-shadow: 0 0 18px rgba(43,123,255,0.6); }
-.stint-role { margin: 0; font-family: var(--display); font-style: var(--display-style); font-weight: 800; font-variation-settings: 'wdth' 105; font-size: clamp(20px,2.4vw,32px); line-height: 1.05; text-transform: uppercase; color: var(--fg-hi); }
+.stint-role { margin: 0; font-family: var(--display); font-style: var(--display-style); font-weight: 800; font-variation-settings: 'wdth' var(--wide-mid); font-size: clamp(20px,2.4vw,32px); line-height: 1.05; text-transform: uppercase; color: var(--fg-hi); }
 .stint-team { margin-top: 4px; color: var(--dim); }
 .stint-status { display: flex; flex-direction: column; align-items: flex-end; gap: 10px; letter-spacing: 0.12em; }
 .org-logo { display: block; height: 30px; width: auto; max-width: 150px; object-fit: contain; opacity: 0.92; }
@@ -340,7 +363,7 @@ a:hover { color: var(--acc-glow); }
 }
 .skill:hover { transform: translateX(8px); }
 .skill .mono:first-child { color: var(--acc-glow); }
-.skill-name { font-family: var(--display); font-style: var(--display-style); font-weight: 800; font-variation-settings: 'wdth' 105; font-size: clamp(20px,2.2vw,28px); line-height: 1.1; text-transform: uppercase; }
+.skill-name { font-family: var(--display); font-style: var(--display-style); font-weight: 800; font-variation-settings: 'wdth' var(--wide-mid); font-size: clamp(20px,2.2vw,28px); line-height: 1.1; text-transform: uppercase; }
 
 .langs { display: grid; gap: 22px; padding: clamp(26px,3vw,40px); }
 .lang { display: grid; gap: 8px; }
@@ -367,7 +390,7 @@ a:hover { color: var(--acc-glow); }
 .degree { display: grid; gap: 18px; align-content: start; padding: clamp(26px,3vw,44px); }
 .degree-top { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
 .degree-top .org-logo { height: 40px; max-width: 170px; }
-.degree-field { margin: 0; font-family: var(--display); font-style: var(--display-style); font-weight: 800; font-variation-settings: 'wdth' 105; font-size: clamp(28px,3.4vw,46px); line-height: 1; text-transform: uppercase; }
+.degree-field { margin: 0; font-family: var(--display); font-style: var(--display-style); font-weight: 800; font-variation-settings: 'wdth' var(--wide-mid); font-size: clamp(28px,3.4vw,46px); line-height: 1; text-transform: uppercase; }
 .degree-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 16px; color: var(--dim); }
 .degree-meta .mono { font-size: 12px; letter-spacing: 0.1em; }
 .clubs { margin-top: clamp(36px,5vw,56px); display: grid; gap: 16px; }
@@ -386,7 +409,7 @@ a:hover { color: var(--acc-glow); }
 .radio-title {
   position: relative; margin: 10px 0 28px;
   font-family: var(--display); font-style: var(--display-style); font-weight: 900;
-  font-variation-settings: 'wdth' 120;
+  font-variation-settings: 'wdth' var(--wide);
   font-size: clamp(64px,15vw,240px); line-height: 0.86; text-transform: uppercase;
   width: fit-content; padding-right: 0.12em;
 }
@@ -453,8 +476,6 @@ a:hover { color: var(--acc-glow); }
 @media (max-width: 760px) {
   .page { font-size: 16px; }
   .hud { min-width: 0; gap: 6px; padding: 8px 10px 6px; border-radius: 14px; }
-  .hud-leds span { width: 6px; height: 6px; }
-  .hud-leds { gap: 3px; }
   .hud-speed b { font-size: 20px; }
   .hud-gear b { font-size: 17px; }
 
@@ -535,3 +556,10 @@ main:focus { outline: none; }
 .motion-icon { width: 10px; height: 10px; background: linear-gradient(90deg, currentColor 0 35%, transparent 35% 65%, currentColor 65%); }
 .btn-motion[aria-pressed="true"] .motion-icon { background: currentColor; clip-path: polygon(0 0, 100% 50%, 0 100%); }
 .btn-motion[aria-pressed="true"] { border-color: var(--acc); color: #fff; }
+
+/* ---------- legibility over the moving smoke ----------
+   A soft dark halo under running text keeps it readable wherever the flow passes. */
+.quote, .stint-team, .degree-meta, .lang-head, .hero-meta, .mono, .kicker, .skill-name, .club, .nav-links a, .footer {
+  text-shadow: 0 1px 2px rgba(3,4,6,0.9), 0 0 14px rgba(3,4,6,0.85);
+}
+.chrome-text, .hero-name span { text-shadow: none; }

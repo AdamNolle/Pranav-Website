@@ -19,7 +19,22 @@
   const letters = q('[data-l]');
   const nameEl = root.querySelector('[data-name]');
   const hero = root.querySelector('[data-hero]');
-  const leds = q('[data-led]');
+  // Full-width shift-light strip: one LED per ~26px, green then red then blue, filling left to right.
+  const redline = document.querySelector('[data-redline]');
+  let leds = [];
+  function buildRedline() {
+    const n = Math.max(16, Math.min(64, Math.round(innerWidth / 26)));
+    if (n === leds.length) return;
+    redline.textContent = '';
+    leds = Array.from({ length: n }, (_, i) => {
+      const d = document.createElement('i');
+      const f = i / n;
+      if (f >= 0.72) d.className = 'b'; else if (f >= 0.4) d.className = 'r';
+      redline.appendChild(d);
+      return d;
+    });
+    lastLit = -1;
+  }
   const speedEl = root.querySelector('[data-hud="speed"]');
   const gearEl = root.querySelector('[data-hud="gear"]');
   const plates = q('[data-metal]');
@@ -156,11 +171,7 @@
     const lit = Math.round(Math.min(1, kmh / 330) * leds.length);
     if (lit !== lastLit) {
       lastLit = lit;
-      leds.forEach((el, i) => {
-        const c = el.dataset.led;
-        el.style.background = i < lit ? c : '#1b1d20';
-        el.style.boxShadow = i < lit ? `0 0 8px ${c}` : 'none';
-      });
+      leds.forEach((el, i) => el.classList.toggle('on', i < lit));
     }
     window.__speed = kmh;
     let target;
@@ -181,7 +192,7 @@
   }
 
   // ---------- wiring ----------
-  const rebuild = measure;
+  const rebuild = () => { measure(); buildRedline(); };
   addEventListener('resize', rebuild);
   addEventListener('pointermove', e => {
     ptr.x = e.clientX / innerWidth; ptr.y = e.clientY / innerHeight;
@@ -249,6 +260,7 @@
   });
 
   measure();
+  buildRedline();
   initReveals();
   requestAnimationFrame(loop);
   race();
