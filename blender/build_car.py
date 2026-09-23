@@ -8,6 +8,21 @@ Run from the repo root:
 Blender is Z-up with the car pointing down +X (metres); the glTF exporter converts to Y-up.
 Front axle at x = +1.70, rear axle at x = -1.90 (3.60 m wheelbase), overall ~5.55 m x 2.00 m x 0.95 m.
 
+Livery brief (from Williams FW46/FW47, Alpine A524, RB20/VCARB, McLaren's 2026 matte-black Monaco car):
+  - satin black base, gloss colour: the matte/gloss contrast does the work, not extra colours;
+  - one hero sweep that follows the car's feature lines: nose -> chassis shoulder -> sidepod top ->
+    downwash ramp -> coke-bottle -> fin -> rear-wing endplates, never a flat stripe;
+  - colour travels along the sweep: electric blue #2b7bff at the nose, deep #0b3a9e, navy #0b1f4d under
+    the cockpit, back to electric blue at the rear (a gradient you read as speed);
+  - a fine silver pinstripe underlines the sweep (Williams-style), stopping short of the ends;
+  - sponsors sit in clean black space at legible sizes: J.B. Hunt title on the sidepod flank and endplates,
+    Georgia Tech on engine cover/endplates, Missouri S&T on nose and front-wing endplates;
+  - bare gloss carbon for the wings and floor; blue only on flap edges, never whole panels;
+  - panel lines and fasteners are painted into the same texture set so the body reads as real hardware.
+  The livery is one side-projected (x, z) texture set (base / ORM+coat / normal) shared by body, sidepods,
+  fillets, airbox, fin and endplates, so the sweep flows continuously over the curvature. Logos stay
+  conformal decals (a side projection would mirror them on one side).
+
 Pipeline:
   1. textures are generated with numpy (carbon twill, paint flake, rubber grain, livery art, type) and
      written to assets/car/*.webp; logos come from assets/logos/*-white.png;
@@ -63,7 +78,8 @@ def lin(hexcol):
     return tuple(x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c)
 
 
-BLUE, DEEP = lin('#2b7bff'), lin('#0b3a9e')
+BLUE, DEEP, NAVY = lin('#2b7bff'), lin('#0b3a9e'), lin('#0b1f4d')
+SILVER = (0.62, 0.64, 0.68)
 
 
 # =============================================================== textures (numpy)
@@ -145,7 +161,7 @@ def carbon_textures():
 
 def flake_normal():
     """Metallic flake: per-flake random micro-tilt. Tile = 40 mm, flakes ~0.3 mm."""
-    N, cell = 512, 4
+    N, cell = 256, 4
     g = N // cell
     tilt = rng.standard_normal((g, g, 2)).astype(np.float32) * 0.35
     tilt = np.repeat(np.repeat(tilt, cell, 0), cell, 1)
@@ -155,16 +171,16 @@ def flake_normal():
 
 
 def rubber_normal():
-    N = 512
+    N = 256
     h = blur(rng.standard_normal((N, N)).astype(np.float32), 1) + 0.5 * blur(rng.standard_normal((N, N)).astype(np.float32), 4)
     return save_img('rubber_normal', height_to_normal(h, 1.2), True)
 
 
 def brushed_textures():
     """Brushed titanium: streaks along U."""
-    W, H = 1024, 256
+    W, H = 512, 128
     n = rng.standard_normal((H, W)).astype(np.float32)
-    s = sum(np.roll(n, k, 1) for k in range(-40, 41)) / 81
+    s = sum(np.roll(n, k, 1) for k in range(-20, 21)) / 41
     s = (s - s.mean()) / (s.std() + 1e-6)
     rough = np.clip(0.26 + 0.05 * s, 0, 1)
     orm = np.stack([np.ones_like(rough), rough, np.ones_like(rough)], -1)
@@ -346,6 +362,7 @@ def add_orm(m, img, scale=None):
     nt.links.new(t.outputs['Color'], sep.inputs['Color'])
     nt.links.new(sep.outputs['Green'], b.inputs['Roughness'])
     nt.links.new(sep.outputs['Blue'], b.inputs['Metallic'])
+    return sep
 
 
 def add_base(m, img, scale=None, alpha=False):
@@ -373,7 +390,7 @@ FLAKE = flake_normal()
 RUBBER_N = rubber_normal()
 TI_ORM, TI_N = brushed_textures()
 CARBON_SCALE = 1 / 0.096      # UVs are in metres; 96 mm tile of 16 tows
-FLAKE_SCALE = 1 / 0.04
+FLAKE_SCALE = 1 / 0.02
 
 
 def carbon_mat(name='Carbon', coat=0.55, coat_rough=0.16):
@@ -391,7 +408,8 @@ def paint(name, color, metallic=0.55, rough=0.36, flake=0.12):
 
 
 M = {
-    'black': paint('Paint_Black', (0.0028, 0.0032, 0.0045), 0.45, 0.34),
+    'black': paint('Paint_Black', (0.0035, 0.004, 0.005), 0.3, 0.4),
+    'livery': principled('Paint_Livery', (0.004, 0.0045, 0.006), 0.3, 0.42, 0.3, 0.03),
     'blue': paint('Paint_Blue', BLUE, 0.35, 0.3, 0.08),
     'deep': paint('Paint_DeepBlue', DEEP, 0.45, 0.32, 0.08),
     'carbon': carbon_mat(),
@@ -469,6 +487,10 @@ def pchip(xs, ys, xq):
     t2, t3 = t * t, t * t * t
     return ((2 * t3 - 3 * t2 + 1) * ys[i] + (t3 - 2 * t2 + t) * h[i] * m[i]
             + (-2 * t3 + 3 * t2) * ys[i + 1] + (t3 - t2) * h[i] * m[i + 1])
+
+
+def aa(x, px):
+    return np.clip(x / px + 0.5, 0, 1)
 
 
 class Track:
@@ -802,14 +824,8 @@ def build_body():
         rings.insert(0, np.column_stack([np.full(len(rings[0]), NOSE_TIP + dx), (body_section(NOSE_TIP)[:, 1:] - c[1:]) * k + c[1:]]))
 
     def mat(c, r, i):
-        x = c.x
-        if x > 2.70:
-            return 1                                   # electric-blue nose tip
-        p = BODY(x)
-        if c.z < p['zb'] + 0.012:
-            return 2                                   # carbon underside
-        return 0
-    return loft('Body', rings, [M['black'], M['blue'], M['carbon']], mat, sharp=40)
+        return 1 if c.z < BODY(c.x)['zb'] + 0.012 else 0      # carbon underside, livery elsewhere
+    return loft('Body', rings, [M['livery'], M['carbon']], mat, sharp=40)
 
 
 # Sidepods (per side). Closed section in (y, z):
@@ -855,7 +871,7 @@ def build_pod(side):
 
     def mat(cc, r, i):
         return 1 if r < nm - 1 or r == -1 else 0
-    return loft('Sidepod_' + ('L' if side > 0 else 'R'), rings, [M['black'], M['inlet']], mat, sharp=45)
+    return loft('Sidepod_' + ('L' if side > 0 else 'R'), rings, [M['livery'], M['inlet']], mat, sharp=45)
 
 
 def apply_mods(obj):
@@ -917,6 +933,66 @@ print('building body ...')
 body = build_body()
 pods = [build_pod(1), build_pod(-1)]
 
+
+def seg_intersect(p1, p2, q1, q2):
+    d1, d2 = p2 - p1, q2 - q1
+    den = d1[0] * d2[1] - d1[1] * d2[0]
+    if abs(den) < 1e-12:
+        return None
+    t = ((q1[0] - p1[0]) * d2[1] - (q1[1] - p1[1]) * d2[0]) / den
+    u = ((q1[0] - p1[0]) * d1[1] - (q1[1] - p1[1]) * d1[0]) / den
+    return (t, u) if 0 <= t <= 1 and 0 <= u <= 1 else None
+
+
+def walk(poly, i, t, dist, step):
+    """Walk `dist` along a polyline from the point at segment i, param t, in direction step (+1/-1)."""
+    p = poly[i] + t * (poly[(i + 1) % len(poly)] - poly[i])
+    k = (i + 1) % len(poly) if step > 0 else i
+    left = dist
+    while True:
+        q = poly[k]
+        d = np.linalg.norm(q - p)
+        if d >= left:
+            return p + (q - p) * (left / d)
+        left -= d
+        p = q
+        k = (k + step) % len(poly)
+
+
+def build_fillet(side, r=0.028):
+    """Concave blend where the sidepod top meets the chassis flank: a quadratic Bezier per station whose end
+    tangents run along both surfaces (control point = the intersection), lofted along x."""
+    rings = []
+    for x in np.linspace(0.70, -1.30, 70):
+        ch = body_section(x)[:, 1:]
+        ch = ch[: len(ch) // 2 + 1]                               # top centre -> +y side -> bottom centre
+        pod = pod_section(x, 1)[:, 1:]
+        best = None
+        for i in range(len(pod)):
+            for j in range(len(ch) - 1):
+                hit = seg_intersect(pod[i], pod[(i + 1) % len(pod)], ch[j], ch[j + 1])
+                if hit:
+                    z = pod[i][1] + hit[0] * (pod[(i + 1) % len(pod)][1] - pod[i][1])
+                    if best is None or z > best[0]:
+                        best = (z, i, hit[0], j, hit[1])
+        if best is None:
+            continue
+        _, i, t, j, u = best
+        C = pod[i] + t * (pod[(i + 1) % len(pod)] - pod[i])
+        rr = r * min(1.0, (0.72 - x) / 0.12)                       # grow in from the inlet lip
+        A = walk(ch, j, u, rr, -1)                                  # up the chassis flank
+        B = walk(pod, i, t, rr, +1)                                 # outward along the sidepod top
+        ts = np.linspace(0, 1, 9)[:, None]
+        yz = (1 - ts) ** 2 * A + 2 * ts * (1 - ts) * C + ts ** 2 * B
+        yz[:, 0] *= side
+        # push 0.4 mm proud so it never z-fights the surfaces it blends
+        rings.append(np.column_stack([np.full(len(yz), x), yz[:, 0] + side * 0.0004 * np.sin(ts[:, 0] * np.pi), yz[:, 1] + 0.0004]))
+    return loft('SidepodFillet_' + ('L' if side > 0 else 'R'), rings, [M['livery']], cap0=False, cap1=False, closed=False,
+                recalc=False, sharp=0)
+
+
+fillets = [build_fillet(1), build_fillet(-1)]
+
 # cockpit opening
 boolean_cut(body, prism('CockpitCut', cockpit_outline(), 0.47, 1.3), M['interior'])
 
@@ -969,7 +1045,7 @@ def build_airbox():
         r = (air_section(0.255) - c) * [0, k, k] + c
         r[:, 0] = 0.255 + dx
         rings.insert(0, r)
-    o = loft('Airbox', rings, [M['black'], M['blue']], lambda c, r, i: 1 if c.x > 0.232 else 0, sharp=45)
+    o = loft('Airbox', rings, [M['livery'], M['blue']], lambda c, r, i: 1 if c.x > 0.232 else 0, sharp=45)
     # intake mouth: rounded-triangle recess
     tri = [(0.0, 0.925), (0.03, 0.92), (0.078, 0.85), (0.07, 0.83), (0.0, 0.83)]
     full = tri + [(-y, z) for y, z in reversed(tri[1:-1])]
@@ -999,6 +1075,107 @@ tcam = loft('TCam', [np.column_stack([np.full(12, x), np.array(ellipse(w, h, 12)
                      for x, w, h in ((0.19, 0.01, 0.006), (0.17, 0.05, 0.016), (0.10, 0.055, 0.017), (0.06, 0.03, 0.01))],
             [M['black']], sharp=60)
 
+# ---------------------------------------------------------------- livery texture set (side projection)
+LX0, LX1, LZ1 = -2.65, 3.10, 1.10          # UV u = (x - LX0) / (LX1 - LX0), v = z / LZ1
+
+
+def side_uv(obj):
+    me = obj.data
+    if not me.uv_layers:
+        me.uv_layers.new(name='UVMap')
+    uv = me.uv_layers.active.data
+    mw = obj.matrix_world
+    for lp in me.loops:
+        co = mw @ me.vertices[lp.vertex_index].co
+        uv[lp.index].uv = ((co.x - LX0) / (LX1 - LX0), co.z / LZ1)
+
+
+def smoothstep(a, b, x):
+    t = np.clip((x - a) / (b - a), 0, 1)
+    return t * t * (3 - 2 * t)
+
+
+def livery_textures(W=4096, H=1024):
+    px = (LX1 - LX0) / W
+    X = LX0 + (np.arange(W) + 0.5) * px
+    Z = LZ1 * (1 - (np.arange(H) + 0.5) / H)
+    XX, ZZ = np.meshgrid(X, Z)
+
+    def track(pts):
+        xs, ys = zip(*sorted(pts))
+        return pchip(xs, ys, X)[None, :]
+    # hero sweep: centre line + half height (side view), following nose -> shoulder -> sidepod top -> coke -> fin
+    c = track([(3.05, 0.20), (2.5, 0.27), (2.1, 0.36), (1.6, 0.45), (1.1, 0.52), (0.7, 0.585), (0.3, 0.595), (-0.2, 0.56),
+               (-0.7, 0.48), (-1.1, 0.41), (-1.45, 0.45), (-1.75, 0.61), (-2.0, 0.72)])
+    h = track([(3.05, 0.30), (2.5, 0.17), (2.1, 0.075), (1.6, 0.046), (1.1, 0.036), (0.7, 0.034), (0.3, 0.034), (-0.2, 0.032),
+               (-0.7, 0.03), (-1.1, 0.03), (-1.45, 0.045), (-1.75, 0.085), (-2.0, 0.12)])
+    aapx = 1.2 * px
+    band = aa(h - np.abs(ZZ - c), aapx)
+    # colour travels along the sweep
+    stops = [(3.1, BLUE), (2.35, BLUE), (1.45, DEEP), (0.55, NAVY), (-0.45, DEEP), (-1.45, BLUE), (-2.7, BLUE)]
+    xs = [a for a, _ in stops][::-1]
+    col_x = np.stack([pchip(xs, [cc[k] for _, cc in stops][::-1], X) for k in range(3)], -1)[None, :, :]
+    # subtle vertical sheen inside the band: a touch lighter along its upper edge
+    sheen = np.clip((ZZ - (c - h)) / np.maximum(2 * h, 1e-3), 0, 1)[..., None]
+    band_rgb = col_x * (0.85 + 0.3 * sheen)
+    # fin + rear-wing endplates: navy -> electric toward the rear, fading down the endplates
+    spine = np.maximum(pchip(BODY.x, BODY.p['zr'], X), np.where(X > -0.85, pchip(AIR.x, AIR.p['zr'], np.clip(X, -0.85, 0.255)), 0))[None, :]
+    fin = aa(ZZ - (spine + 0.012), aapx) * ((XX < -0.12) & (XX > -1.75))
+    fin_rgb = np.stack([pchip([-1.75, -1.2, -0.12], [BLUE[k], DEEP[k], NAVY[k]], X) for k in range(3)], -1)[None, :, :]
+    endp = smoothstep(0.50, 0.86, ZZ) * (XX < -1.975)
+    base = np.array([0.0035, 0.004, 0.005])
+    rgb = np.broadcast_to(base, (H, W, 3)).copy()
+    for a, cc in ((fin[..., None], fin_rgb), (endp[..., None], np.array(BLUE) * (0.55 + 0.45 * ZZ[..., None]))):
+        rgb = rgb * (1 - a) + cc * a
+    rgb = rgb * (1 - band[..., None]) + band_rgb * band[..., None]
+    paint = np.clip(band + fin + endp, 0, 1)
+    # silver pinstripe underlining the sweep
+    ends = smoothstep(2.35, 2.1, XX) * smoothstep(-1.62, -1.4, XX)
+    pin = aa(0.0026 - np.abs(ZZ - (c - h - 0.011)), aapx) * ends
+    rgb = rgb * (1 - pin[..., None]) + np.array(SILVER) * pin[..., None]
+    # panel lines + fasteners (engine cover, nose joint, sidepod inlet surround)
+    groove = np.zeros((H, W))
+
+    def vline(x0, z0, z1, w=0.0011):
+        return aa(w - np.abs(XX - x0), px) * (ZZ > z0) * (ZZ < z1)
+    zs = pchip(BODY.x, BODY.p['zs'], X)[None, :]
+    groove = np.maximum(groove, vline(1.95, 0.12, 0.60))
+    groove = np.maximum(groove, vline(-0.32, 0.44, 0.95))
+    groove = np.maximum(groove, vline(-1.70, 0.30, 0.56))
+    groove = np.maximum(groove, aa(0.0011 - np.abs(ZZ - (zs + 0.03)), px) * (XX < -0.32) * (XX > -1.70))
+    bolts = np.zeros((H, W))
+    bolt_pts = [(-0.32 - 0.016, z) for z in np.arange(0.48, 0.92, 0.065)] + \
+               [(x, float(pchip(BODY.x, BODY.p['zs'], x)[0]) + 0.03 + 0.016) for x in np.arange(-0.40, -1.66, -0.12)] + \
+               [(1.95 - 0.016, z) for z in np.arange(0.18, 0.58, 0.07)]
+    for bx, bz in bolt_pts:
+        i0, j0 = int((bx - LX0) / px), int((LZ1 - bz) / LZ1 * H)
+        r = 7
+        ys_, xs_ = np.mgrid[-r:r + 1, -r:r + 1]
+        d = np.sqrt(xs_ ** 2 + (ys_ * (LZ1 / H) / px) ** 2) * px
+        sl = (slice(max(j0 - r, 0), j0 + r + 1), slice(max(i0 - r, 0), i0 + r + 1))
+        bolts[sl] = np.maximum(bolts[sl], aa(0.0032 - d, px)[:bolts[sl].shape[0], :bolts[sl].shape[1]])
+        groove[sl] = np.maximum(groove[sl], (aa(0.0042 - d, px) - aa(0.0034 - d, px))[:groove[sl].shape[0], :groove[sl].shape[1]])
+    rgb = rgb * (1 - 0.8 * groove[..., None])
+    rgb = rgb * (1 - bolts[..., None]) + np.array((0.35, 0.36, 0.38)) * bolts[..., None]
+    # ORM: R = clearcoat weight, G = roughness, B = metallic. Satin black, gloss colour.
+    coat = 0.3 + 0.7 * np.clip(paint + pin, 0, 1)
+    rough = 0.42 - 0.2 * np.clip(paint + pin, 0, 1) + 0.25 * groove
+    metal = 0.3 + 0.1 * paint + 0.55 * np.clip(pin + bolts, 0, 1)
+    orm = np.stack([coat, np.clip(rough, 0, 1), np.clip(metal, 0, 1)], -1)
+    hgt = -groove * 1.0 + bolts * 0.6
+    nrm = height_to_normal(hgt, 1.6)
+    return (save_img('livery_basecolor', to_srgb(rgb)), save_img('livery_orm', orm, True), save_img('livery_normal', nrm, True))
+
+
+def setup_livery():
+    m = M['livery']
+    base, orm, nrm = livery_textures()
+    add_base(m, base)
+    sep = add_orm(m, orm)
+    m.node_tree.links.new(sep.outputs['Red'], m.node_tree.nodes['Principled BSDF'].inputs['Coat Weight'])
+    add_normal(m, nrm, 0.8)
+
+
 # ---------------------------------------------------------------- engine-cover fin
 def fin_outline():
     top = [(0.02, 0.938), (-0.30, 0.905), (-0.70, 0.846), (-1.10, 0.782), (-1.45, 0.722), (-1.60, 0.70)]
@@ -1007,7 +1184,7 @@ def fin_outline():
     return top + te + bottom
 
 
-fin = plate('Fin', list(reversed(fin_outline())), 0.009, 0.0, M['black'], bevel=0.0025)
+fin = plate('Fin', list(reversed(fin_outline())), 0.009, 0.0, M['livery'], bevel=0.0025)
 
 # ---------------------------------------------------------------- floor
 FLOOR_Z, FLOOR_T = 0.066, 0.011
@@ -1095,11 +1272,11 @@ diffuser = build_diffuser()
 FW_ELEMS = [
     # chord(s), pitch(s) centre->tip, thickness
     (lambda s: 0.300 - 0.05 * s, lambda s: 3 + 5 * s, 0.10),
-    (lambda s: 0.175 - 0.02 * s, lambda s: 12 + 9 * s, 0.085),
-    (lambda s: 0.145 - 0.02 * s, lambda s: 22 + 12 * s, 0.08),
-    (lambda s: 0.118 - 0.018 * s, lambda s: 32 + 14 * s, 0.075),
+    (lambda s: 0.175 - 0.02 * s, lambda s: 12 + 9 * s + 7 * s ** 6, 0.085),
+    (lambda s: 0.145 - 0.02 * s, lambda s: 22 + 12 * s + 9 * s ** 6, 0.08),
+    (lambda s: 0.118 - 0.018 * s, lambda s: 32 + 14 * s + 10 * s ** 6, 0.075),
 ]
-FW_HALF = 0.978
+FW_HALF = 0.962
 
 
 def fw_stack(y):
@@ -1114,8 +1291,8 @@ def fw_stack(y):
         a = math.radians(p)
         xte, zte = xle - c * math.cos(a), zle + c * math.sin(a)
         # next element: small overlap, slot gap above the trailing edge; outboard sweep + rise
-        xle = xte + 0.030 - 0.035 * s ** 2
-        zle = zte + 0.016 + 0.02 * s ** 3
+        xle = xte + 0.030 - 0.035 * s ** 2 - 0.015 * s ** 6
+        zle = zte + 0.016 + 0.02 * s ** 3 + 0.018 * s ** 6         # outboard tips curl up into the endplate
     return out
 
 
@@ -1126,7 +1303,7 @@ def build_front_wing():
         w = wing('FW_Element%d' % (k + 1), ys, lambda y, k=k: fw_stack(y)[k], [mat], tc=FW_ELEMS[k][2], camber=0.05)
         box_uv(w)
     for s in (1, -1):
-        y = s * (FW_HALF + 0.006)
+        y = s * (FW_HALF + 0.022)
         tip = fw_stack(FW_HALF)
         top_te = tip[3]
         a = math.radians(top_te[3])
@@ -1134,9 +1311,12 @@ def build_front_wing():
         outline = [(3.06, 0.055), (3.06, 0.14), (2.98, 0.20), (2.80, 0.26), (xte + 0.06, zte + 0.02), (xte - 0.02, zte + 0.01),
                    (xte - 0.03, 0.20), (2.32, 0.10), (2.30, 0.055)]
         plate('FW_Endplate', outline, 0.010, y, M['carbon'], bevel=0.002,
-              bend=lambda x, z, s=s: -s * 0.05 * max(0.0, (z - 0.12) / 0.2) ** 2 - s * 0.02 * max(0.0, (2.6 - x) / 0.3) ** 2)
+              bend=lambda x, z, s=s: -s * 0.012 * max(0.0, (z - 0.14) / 0.2) ** 2 - s * 0.01 * max(0.0, (2.6 - x) / 0.3) ** 2)
         # footplate / diveplane
-        plate('FW_Foot', [(3.05, 0.052), (2.34, 0.052), (2.40, 0.062), (3.02, 0.062)], 0.06, s * (FW_HALF - 0.02), M['carbon'], bevel=0.002)
+        # footplate with an upturned outer lip, and a small diveplane on the endplate
+        plate('FW_Footplate', [(3.06, 0.050), (2.30, 0.050), (2.36, 0.060), (3.03, 0.060)], 0.11, s * (FW_HALF - 0.045), M['carbon'], bevel=0.002)
+        plate('FW_FootLip', [(3.0, 0.058), (2.36, 0.058), (2.40, 0.085), (2.95, 0.075)], 0.006, s * (FW_HALF + 0.045), M['carbon'], bevel=0.0015)
+
 
 
 build_front_wing()
@@ -1167,7 +1347,7 @@ def build_rear_wing():
         y = s * (RW_HALF + 0.005)
         outline = [(-1.985, 0.690), (-2.02, 0.790), (-2.12, 0.905), (-2.30, 0.965), (-2.48, 0.968), (-2.51, 0.93), (-2.505, 0.68),
                    (-2.44, 0.50), (-2.42, 0.29), (-2.20, 0.29), (-2.16, 0.46), (-2.06, 0.62)]
-        plate('RW_Endplate', outline, 0.010, y, M['carbon'], bevel=0.0025,
+        plate('RW_Endplate', outline, 0.010, y, M['livery'], bevel=0.0025,
               bend=lambda x, z, s=s: -s * 0.04 * max(0.0, (z - 0.84) / 0.13) ** 2)
         # endplate rain-light LED strip
         rbox('RW_LED', (0.012, 0.004, 0.16), (-2.507, s * (RW_HALF + 0.011), 0.80), M['rain'], bevel=0.001)
@@ -1279,13 +1459,17 @@ HELMET = (0.43, 0.0, 0.745)
 uv_sphere('Helmet', (0.150, 0.128, 0.140), HELMET, M['black'], keep=lambda c: c.z > -0.55)
 uv_sphere('Visor', (0.1515, 0.1295, 0.1415), HELMET, M['visor'], keep=lambda c: c.x > 0.42 and -0.12 < c.z < 0.42)
 uv_sphere('HelmetBand', (0.1512, 0.1292, 0.1412), HELMET, M['blue'], keep=lambda c: (abs(c.y) < 0.16 and c.z > 0.35) or (c.x < -0.1 and -0.05 < c.z < 0.12))
-rbox('HANS', (0.18, 0.30, 0.05), (0.36, 0, 0.615), M['black'], bevel=0.02)
+rbox('HANS', (0.12, 0.25, 0.035), (0.335, 0, 0.628), M['carbon'], bevel=0.014)
 
 # ---------------------------------------------------------------- mirrors, cameras, antennas, pitots
 for s in (1, -1):
     mx, my, mz = 0.93, s * 0.47, 0.668
     rbox('MirrorHousing', (0.075, 0.17, 0.058), (mx, my, mz), M['black'], rot=(0, 0, math.radians(-s * 6)), bevel=0.018, segs=4)
     rbox('MirrorGlass', (0.004, 0.15, 0.042), (mx - 0.037, my, mz), M['glass'], rot=(0, 0, math.radians(-s * 6)), bevel=0.003)
+    ys_w = np.linspace(my - 0.085, my + 0.085, 7)
+    box_uv(wing('MirrorWinglet', ys_w, lambda yy: (mx + 0.03, mz + 0.048, 0.06, 6), [M['carbon']], tc=0.09, camber=0.06))
+    for dy in (-0.06, 0.06):
+        strut('MirrorWingletStay', (mx + 0.005, my + dy, mz + 0.02), (mx + 0.0, my + dy, mz + 0.05), 0.02, 0.004, M['carbon'])
     strut('MirrorStalk', (0.95, s * body_halfwidth(0.95, 0.60) * 0.8, 0.60), (mx + 0.005, s * 0.40, mz - 0.01), 0.04, 0.009, M['carbon'])
     strut('MirrorStalk', (0.86, s * 0.47, 0.62), (mx - 0.01, s * 0.47, mz - 0.02), 0.035, 0.008, M['carbon'])
     # regulation camera housings on the chassis shoulders
@@ -1326,13 +1510,12 @@ def wheel(name, x, yc, w, side, front):
         revolve('Rim', [(0.200, -h + 0.02), (0.226, -h + 0.02), (0.228, h - 0.03), (0.240, h - 0.022), (0.242, h - 0.012),
                         (0.228, h - 0.010), (0.222, h - 0.02)], [M['rim']], c, side),
         # wheel cover: shallow dish, carbon, blue anodised retaining ring
-        revolve('WheelCover', [(0.222, h - 0.016), (0.16, h - 0.022), (0.08, h - 0.026), (0.052, h - 0.026)], [M['carbon']], c, side, sharp=0),
+        revolve('WheelCover', [(0.222, h - 0.016), (0.16, h - 0.022), (0.08, h - 0.026), (0.052, h - 0.026)], [M['cover']], c, side, sharp=0),
         revolve('WheelRing', [(0.064, h - 0.024), (0.052, h - 0.020), (0.052, h - 0.014), (0.064, h - 0.012), (0.064, h - 0.024)][::-1],
                 [M['blue']], c, side, segs=48),
         # centre-lock nut: castellated look via 6 segments
         revolve('WheelNut', [(0.0, h - 0.004), (0.028, h - 0.004), (0.034, h - 0.010), (0.034, h - 0.030)], [M['polished']], c, side, segs=6, sharp=30),
     ]
-    box_uv(parts[2])
     # sidewall lettering ring (conformal: follows the sidewall bulge, 0.6 mm proud)
     rs = np.linspace(0.262, 0.334, 6)
     prof = [(r, sidewall_y(w, r) + 0.0006) for r in rs]
@@ -1365,6 +1548,25 @@ def tyre_label_texture():
     return save_img('tyre_label', img)
 
 
+def wheel_cover_texture(W=2048, H=256):
+    """Polar art for the 2022-style wheel covers: u = angle, v = rim (0) -> hub (1).
+    Satin carbon-black disc, five swept spokes graded deep -> electric blue toward the rim, silver rim line."""
+    u = (np.arange(W) + 0.5)[None, :] / W
+    v = (np.arange(H) + 0.5)[:, None] / H
+    px = 1.0 / W * 5
+    ph = (u * 5 + (1 - v) ** 1.4 * 0.55) % 1.0
+    spoke = aa(0.055 - np.abs(ph - 0.5) * (0.6 + 0.4 * v), px) * smoothstep(0.93, 0.62, v) * smoothstep(0.0, 0.05, v)
+    k = np.clip(v / 0.8, 0, 1)[..., None]
+    spoke_rgb = np.array(BLUE) * (1 - k) + np.array(DEEP) * k
+    base = np.broadcast_to(np.array((0.006, 0.0065, 0.008)), (H, W, 3)).copy()
+    rgb = base * (1 - spoke[..., None]) + spoke_rgb * spoke[..., None]
+    ring = aa(0.006 - np.abs(v - 0.035), 1 / H)
+    rgb = rgb * (1 - ring[..., None]) + np.array(SILVER) * ring[..., None]
+    return save_img('wheel_cover', to_srgb(np.broadcast_to(rgb, (H, W, 3))))
+
+
+M['cover'] = principled('WheelCover', (0.01, 0.01, 0.012), 0.2, 0.38, 0.8, 0.05)
+add_base(M['cover'], wheel_cover_texture())
 M['tyre_label'] = principled('Tyre_Label', (0.8, 0.8, 0.8), 0.0, 0.7)
 add_base(M['tyre_label'], tyre_label_texture(), alpha=True)
 
@@ -1493,7 +1695,21 @@ def logo_decal(key, targets, center, direction, up, height=None, width=None, **k
     return decal('Decal_' + key, targets, center, direction, up, width, height, LOGO_MAT[key], **kw)
 
 
+_type_cache = {}
+
+
 def type_texture(name, text, color, H=256, spacing=1.05, shear=0.0):
+    key = (text, tuple(color), spacing, shear)
+    if key in _type_cache:
+        return _type_cache[key]
+    _type_cache[key] = _type_texture(name, text, color, H, spacing, shear)
+    return _type_cache[key]
+
+
+_mat_cache = {}
+
+
+def _type_texture(name, text, color, H=256, spacing=1.05, shear=0.0):
     m = text_mask(text, H, spacing=spacing, shear=shear, pad=0.1)
     return save_img(name, pad_pow2(rgba(m, color))), m.shape[1] / m.shape[0]
 
@@ -1505,8 +1721,9 @@ def type_decal(key, text, color, targets, center, direction, up, height, spacing
     img, asp = type_texture('type_' + key, text, color, spacing=spacing, shear=shear)
     # the texture is padded to a power of two: widen the decal to match the padded canvas
     W, H = img.size          # padded canvas; `height` is the text-box height (256 px)
-    return decal('Decal_' + key, targets, center, direction, up, height * W / 256, height * H / 256,
-                 decal_mat('Decal_' + key, img), **kw)
+    if img.name not in _mat_cache:
+        _mat_cache[img.name] = decal_mat('Decal_' + key, img)
+    return decal('Decal_' + key, targets, center, direction, up, height * W / 256, height * H / 256, _mat_cache[img.name], **kw)
 
 
 def gradient_texture(name, W, H, fn):
@@ -1523,22 +1740,10 @@ def aa(x, px):
 
 def livery():
     side_views = ((1, (0, -1, 0)), (-1, (0, 1, 0)))
-    blue, deep = np.array(BLUE), np.array(DEEP)
-    # 1) sidepod blade: electric-blue stripe tapering back along the sidepod shoulder
-    def blade(u, v):
-        top = 0.62 - 0.55 * u ** 1.3
-        bot = 0.30 - 0.20 * u
-        a = aa(top - v, 0.012) * aa(v - bot, 0.012) * aa(0.97 - u, 0.01) * aa(u - 0.01, 0.01)
-        k = np.clip(u * 1.4, 0, 1)[..., None]
-        rgb = blue * (1 - k) + deep * k
-        return np.broadcast_to(rgb, u.shape + (3,)).copy(), a
-    img = gradient_texture('livery_sidepod_blade', 1024, 128, blade)
-    mb = decal_mat('Decal_SidepodBlade', img)
-    for s, d in side_views:
-        decal('Decal_SidepodBlade', [pods[0 if s > 0 else 1]], (-0.38, s * 0.8, 0.43), d, (0, 0, 1), 1.9, 0.12, mb, flip_u=False if s > 0 else True, res=(160, 12))
+    # (the hero sweep, pinstripe and panel lines are painted in the livery texture set; logos are decals)
     # 2) J.B. Hunt title logo on the sidepods
     for s, d in side_views:
-        logo_decal('jbhunt', [pods[0 if s > 0 else 1]], (-0.08, s * 0.9, 0.50), d, (0, 0, 1), width=0.66)
+        logo_decal('jbhunt', [pods[0 if s > 0 else 1]], (-0.12, s * 0.9, 0.435), d, (0, 0, 1), width=0.70)
     # 3) Missouri S&T on the nose sides and front-wing endplates
     for s, d in side_views:
         logo_decal('missouri-st', [body], (2.33, s * 0.4, 0.33), d, (0.25, 0, 1), width=0.22)
@@ -1548,19 +1753,33 @@ def livery():
     for s, d in side_views:
         logo_decal('georgia-tech', [body, airbox], (-0.52, s * 0.6, 0.62), d, (0.35, 0, 1), height=0.075)
         eps = [o for o in col.objects if o.name.startswith('RW_Endplate') and (o.matrix_world @ o.data.vertices[0].co).y * s > 0]
-        logo_decal('jbhunt', eps, (-2.26, s * 1.0, 0.855), d, (0, 0, 1), width=0.40)
+        logo_decal('jbhunt', eps, (-2.265, s * 1.0, 0.85), d, (0, 0, 1), width=0.44)
         logo_decal('georgia-tech-wordmark', eps, (-2.27, s * 1.0, 0.735), d, (0, 0, 1), width=0.30)
     # 5) J.B. Hunt across the DRS flap (seen from above/behind)
     flap = [o for o in col.objects if o.name.startswith('RW_DRSFlap')]
     logo_decal('jbhunt', flap, (-2.40, 0, 1.4), (0.35, 0, -1), (-1, 0, 0), width=0.62)
     # 6) driver name on the cockpit flanks, number on the nose, PK + number on the fin
     for s, d in side_views:
-        type_decal('name_%d' % s, 'P. KONDAPANENI', WHITE, [body], (0.66, s * 0.6, 0.545), d, (0, 0, 1), 0.040, spacing=1.12)
+        type_decal('name_%d' % s, 'P. KONDAPANENI', WHITE, [airbox], (-0.02, s * 0.5, 0.878), d, (-0.05, 0, 1), 0.032, spacing=1.12)
         type_decal('fin_pk_%d' % s, 'PK', WHITE, [fin], (-0.80, s * 0.3, 0.845), d, (0.1, 0, 1), 0.075, shear=0.18)
-        type_decal('fin_no_%d' % s, NUMBER, BLUE, [fin], (-1.10, s * 0.3, 0.80), d, (0.1, 0, 1), 0.07, shear=0.18)
+        type_decal('fin_no_%d' % s, NUMBER, WHITE, [fin], (-1.10, s * 0.3, 0.80), d, (0.1, 0, 1), 0.07, shear=0.18)
 
 
+print('painting livery texture set ...')
+setup_livery()
+for o in list(col.objects):
+    if o.type == 'MESH' and any(m == M['livery'] for m in o.data.materials):
+        side_uv(o)
 livery()
+
+# ---------------------------------------------------------------- rake: sprung mass pitched nose-down about the front contact patch
+RAKE = math.radians(0.45)          # ~28 mm higher at the rear axle, typical ground-effect-era rake
+UNSPRUNG = ('Wheel_', 'BrakeDrum', 'BrakeDuct', 'WheelDeflector', 'RearDuct')
+pivot = Vector((XF, 0, 0))
+rk = Matrix.Translation(pivot) @ Matrix.Rotation(RAKE, 4, 'Y') @ Matrix.Translation(-pivot)
+for o in list(col.objects):
+    if o.parent is None and not o.name.startswith(UNSPRUNG):
+        o.matrix_world = rk @ o.matrix_world
 
 # ---------------------------------------------------------------- UVs for every lofted/strut part lacking them
 for o in col.objects:
@@ -1583,7 +1802,7 @@ print('objects', len(col.objects), 'polys', stats)
 if DO_EXPORT:
     kw = dict(filepath=OUT, export_format='GLB', export_apply=True, export_yup=True,
               export_draco_mesh_compression_enable=True, export_draco_mesh_compression_level=6,
-              export_draco_position_quantization=14, export_draco_normal_quantization=10,
+              export_draco_position_quantization=13, export_draco_normal_quantization=9,
               export_draco_texcoord_quantization=14, export_image_format='WEBP', export_image_quality=88)
     bpy.ops.export_scene.gltf(**kw)
     print('Exported', OUT, os.path.getsize(OUT) // 1024, 'KB')
@@ -1646,8 +1865,8 @@ if DO_BAKE:
     out = bpy.data.images.new('shadow', 1024, 512, alpha=False)
     rgba_ = np.stack([sh, sh, sh, np.ones_like(sh)], -1)[::-1]
     out.pixels.foreach_set(np.ascontiguousarray(rgba_, np.float32).ravel())
-    out.filepath_raw = os.path.join(TEX, 'shadow.png')
-    out.file_format = 'PNG'
+    out.filepath_raw = os.path.join(TEX, 'shadow.webp')
+    out.file_format = 'WEBP'
     out.save()
     bpy.data.objects.remove(pl)
     print('baked contact shadow (%.0fs): plane %.1f x %.1f m centred at x=%.2f' % (time.time() - t0, SW, SH, CX))
@@ -1671,7 +1890,7 @@ if VIEWS:
     L = [[bm.verts.new((x, -12 + 24 * k / 1, z)) for x, z in prof] for k in (0, 1)]
     for i in range(len(prof) - 1):
         bm.faces.new((L[0][i], L[0][i + 1], L[1][i + 1], L[1][i]))
-    cove = mesh_from_bm('Cove', bm, [principled('Studio_Floor', (0.004, 0.004, 0.005), 0.0, 0.42, 0.25, 0.08)], sharp=0)
+    cove = mesh_from_bm('Cove', bm, [principled('Studio_Floor', (0.006, 0.0065, 0.008), 0.0, 0.5, 0.35, 0.2)], sharp=0)
     cove.rotation_euler = (0, 0, math.radians(200))
 
     def area(name, loc, size, energy, color=(1, 1, 1), shape='RECTANGLE', aim=(0.3, 0, 0.3)):
@@ -1685,11 +1904,15 @@ if VIEWS:
         o.rotation_euler = (Vector(aim) - Vector(loc)).to_track_quat('-Z', 'Y').to_euler()
         col.objects.link(o)
         return o
-    area('Softbox', (0.3, 0, 4.2), (7.0, 2.6), 1100)
-    area('StripL', (0.3, 2.6, 3.2), (8.0, 0.25), 700, aim=(0.3, 0.6, 0))
-    area('StripR', (0.3, -2.6, 3.2), (8.0, 0.25), 600, aim=(0.3, -0.6, 0))
-    area('Kicker', (-4.5, -3.5, 1.2), (0.6, 3.5), 900, BLUE, aim=(0, 0, 0.4))
-    area('Fill', (5.5, 3.0, 1.0), (3.0, 1.5), 180, (0.9, 0.95, 1.0))
+    # Car-launch studio: one huge soft overhead diffusion box (broad roll-off), two thin hard strips for crisp
+    # specular lines, big dim side fills so the satin black keeps its form, a cool blue kicker from behind.
+    area('Softbox', (0.3, 0, 4.6), (10.0, 4.5), 1400)
+    area('StripL', (0.3, 3.0, 3.4), (9.0, 0.10), 260, aim=(0.3, 0.8, 0))
+    area('StripR', (0.3, -3.0, 3.4), (9.0, 0.10), 200, aim=(0.3, -0.8, 0))
+    area('FillL', (0.3, 6.0, 1.3), (8.0, 2.5), 260, (0.92, 0.95, 1.0), aim=(0.3, 0, 0.4))
+    area('FillR', (0.3, -6.0, 1.3), (8.0, 2.5), 180, (0.92, 0.95, 1.0), aim=(0.3, 0, 0.4))
+    area('Kicker', (-5.0, -3.5, 1.4), (0.8, 4.0), 700, BLUE, aim=(0, 0, 0.4))
+    area('Front', (7.0, 1.0, 1.2), (3.0, 3.0), 120, (1.0, 1.0, 1.0), aim=(0.3, 0, 0.4))
     cam = bpy.data.objects.new('Cam', bpy.data.cameras.new('Cam'))
     col.objects.link(cam)
     scene.camera = cam

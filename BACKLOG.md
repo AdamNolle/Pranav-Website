@@ -25,8 +25,14 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
 - **Metal:** redesigned as calm graphite anodise with a soft key light and one soft sheen; text contrast is at least 7:1.
 - **Layout:** the nav now has a solid blurred backing at every width, so nothing collides with it. The hero name is fitted to the screen width. The redline strip spans the full top edge. PNG/ICO favicons and a web manifest are in.
 
+- **Car round 2:**
+  - A livery researched from Williams, Alpine and RB: an electric-to-navy sweep on satin black with a silver pinstripe.
+  - Realism: fillets, curled wing tips, wheel-cover art and tyre bulge.
+  - Lighting: soft softbox plus hard strips, Neutral tone mapping, VSM shadows, and a blurred floor reflection.
+  - Phones get a light render path; `car.glb` is 1.08 MB.
+
 ## Also open
 - LCP is still just over 2.5 s on throttled mobile, because the intro holds the name back. Consider painting the name immediately in a dimmed state.
-- The metal cards need a calmer, premium look (a subagent redesign was in progress 2026-09-23).
-- A car livery and lighting pass was in progress (subagent).
+- Rear-wing endplate logos (Georgia Tech, J.B. Hunt) are small at hero scale; enlarge or move them.
+- Car textures: try KTX2/Basis once an encoder is installed (livery set is WebP at 4K wide).
 - Measure contrast by eye over the moving smoke and metal (axe can't measure over canvases).
