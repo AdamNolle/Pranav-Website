@@ -1271,10 +1271,11 @@ diffuser = build_diffuser()
 # ---------------------------------------------------------------- front wing
 FW_ELEMS = [
     # chord(s), pitch(s) centre->tip, thickness
-    (lambda s: 0.300 - 0.05 * s, lambda s: 3 + 5 * s, 0.10),
-    (lambda s: 0.175 - 0.02 * s, lambda s: 12 + 9 * s + 7 * s ** 6, 0.085),
-    (lambda s: 0.145 - 0.02 * s, lambda s: 22 + 12 * s + 9 * s ** 6, 0.08),
-    (lambda s: 0.118 - 0.018 * s, lambda s: 32 + 14 * s + 10 * s ** 6, 0.075),
+    # 2024-25 proportions: ~0.24 m tall at the centre, ~0.35 m at the outboard tips
+    (lambda s: 0.300 - 0.05 * s, lambda s: 3 + 4 * s, 0.10),
+    (lambda s: 0.175 - 0.04 * s, lambda s: 10 + 8 * s + 4 * s ** 6, 0.085),
+    (lambda s: 0.145 - 0.04 * s, lambda s: 18 + 10 * s + 5 * s ** 6, 0.08),
+    (lambda s: 0.118 - 0.035 * s, lambda s: 26 + 12 * s + 6 * s ** 6, 0.075),
 ]
 FW_HALF = 0.962
 
@@ -1283,7 +1284,7 @@ def fw_stack(y):
     """Leading edges of all four elements at span position y."""
     s = min(1.0, max(0.0, (abs(y) - 0.24) / (FW_HALF - 0.24)))
     xle = 3.035 - 0.05 * s ** 1.5
-    zle = 0.072 + 0.018 * s + 0.03 * s ** 4
+    zle = 0.072 + 0.018 * s + 0.012 * s ** 4
     out = []
     for k, (ch, pt, tc) in enumerate(FW_ELEMS):
         c, p = ch(s), pt(s)
@@ -1292,7 +1293,7 @@ def fw_stack(y):
         xte, zte = xle - c * math.cos(a), zle + c * math.sin(a)
         # next element: small overlap, slot gap above the trailing edge; outboard sweep + rise
         xle = xte + 0.030 - 0.035 * s ** 2 - 0.015 * s ** 6
-        zle = zte + 0.016 + 0.02 * s ** 3 + 0.018 * s ** 6         # outboard tips curl up into the endplate
+        zle = zte + 0.010 + 0.006 * s ** 3 + 0.004 * s ** 6        # slot gap; tips curl gently into the endplate
     return out
 
 

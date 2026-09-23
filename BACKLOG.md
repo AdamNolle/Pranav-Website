@@ -17,6 +17,9 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
 5. **Texture quality everywhere:** (2× DPR pass 2026-09-23: logos, type, metal and portrait are crisp; the car backdrop was beige and is now cool navy. Suspension members now use 28-segment profiles and the GLB stores normals at 11 bits, so the banding is gone.) no visible tiling, banding, aliasing, blur or stretching on the car, metal cards, smoke sprites, logos or portrait. Check each at 2× DPR.
 
 ## Done (2026-09-23)
+- **Car to 1:1, proportions:** checked against 2024–25 dimensions (length 5.57 m, width 2.02 m, 3.6 m wheelbase, 720 mm tyres, about 0.96 m height; all within regulation).
+  - The front wing was 0.57 m tall at the tips against a real 0.33–0.35 m. It's re-proportioned to 0.25 m in the centre and 0.35 m at the tips.
+  - Next: compare the sidepod inlet shape and engine-cover height with a real side view.
 - **Contrast over the live smoke and metal:** measured by `scratchpad/contrast.py`. It hides the text, photographs the real backdrop over 3 frames at every scroll step, and compares each element's colour with the 97th-percentile backdrop.
   - Fixes: darker badge and CTA gradients, light quote marks, opaque club pills, and dark chips under small labels on the smoke.
   - Result: 588 samples, 0 failures; the worst is 5.48:1 on desktop and 5.50:1 on phone.
