@@ -20,7 +20,7 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
 - **Car to 1:1, proportions:** checked against 2024–25 dimensions (length 5.57 m, width 2.02 m, 3.6 m wheelbase, 720 mm tyres, about 0.96 m height; all within regulation).
   - The front wing was 0.57 m tall at the tips against a real 0.33–0.35 m. It's re-proportioned to 0.25 m in the centre and 0.35 m at the tips.
   - Side view: the fin used to stand up to 19 cm proud of the engine cover at the rear, reading as a flat panel. It's now a slim 2024-style fin that tracks the cover (7 cm proud, tapering to 3 cm), with the PK and number moved onto it.
-  - Next: PK and number are small at hero scale; consider putting the race number on the nose top and the airbox.
+  - Race number 7 added on the nose top (0.16 m, projected straight down, upright when seen from ahead, as teams place it); checked in front and nose close-up renders.
 - **Contrast over the live smoke and metal:** measured by `scratchpad/contrast.py`. It hides the text, photographs the real backdrop over 3 frames at every scroll step, and compares each element's colour with the 97th-percentile backdrop.
   - Fixes: darker badge and CTA gradients, light quote marks, opaque club pills, and dark chips under small labels on the smoke.
   - Result: 588 samples, 0 failures; the worst is 5.48:1 on desktop and 5.50:1 on phone.

@@ -1768,6 +1768,8 @@ def livery():
         # on the slim fin, sitting in the band just above the engine cover
         type_decal('fin_pk_%d' % s, 'PK', WHITE, [fin], (-0.62, s * 0.3, float(BODY(-0.62)['zr']) + 0.038), d, (0.1, 0, 1), 0.05, shear=0.18)
         type_decal('fin_no_%d' % s, NUMBER, WHITE, [fin], (-0.92, s * 0.3, float(BODY(-0.92)['zr']) + 0.034), d, (0.1, 0, 1), 0.046, shear=0.18)
+    # race number on the nose top, projected straight down; upright when seen from ahead of the car
+    type_decal('nose_no', NUMBER, WHITE, [body], (1.95, 0, float(BODY(1.95)['zr']) + 0.2), (0, 0, -1), (-1, 0, 0), 0.16, shear=0.18)
 
 
 print('painting livery texture set ...')
@@ -1931,6 +1933,7 @@ if VIEWS:
         'top': ((0.3, 0.0, 12.0), (0.3, 0, 0), 50),
         'detail': ((-1.2, 2.2, 1.6), (0.3, 0.3, 0.6), 50),
         'endplate': ((-2.1, 2.6, 0.95), (-2.25, 0.48, 0.72), 50),
+        'nosetop': ((3.4, 0.9, 1.5), (1.9, 0, 0.45), 50),
         'hero': ((-3.4, 5.6, 1.35), (0.2, 0, 0.42), 45),
     }
     for v in VIEWS:
