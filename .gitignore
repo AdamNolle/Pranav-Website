@@ -1,0 +1,12 @@
+# Local tooling
+.claude/
+.serena/
+.DS_Store
+__pycache__/
+
+# Blender review renders (regenerate with the build scripts)
+blender/preview_*.png
+blender/metal_reference*.png
+
+# Unprocessed source photo (the site uses the cutout)
+assets/pranav-original.jpg

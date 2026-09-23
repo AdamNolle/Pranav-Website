@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pranav Kondapaneni</title>
+<meta name="theme-color" content="#050608">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<meta name="description" content="Pranav Kondapaneni — Software Engineer at J.B. Hunt Transport, CS at Georgia Tech.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:ital,wdth,wght@0,50..150,400..900;1,50..150,400..900&amp;family=Barlow:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;600;700&amp;display=swap" rel="stylesheet">
+<script>document.documentElement.classList.add('js');try{if(localStorage.getItem('motion')==='paused')document.documentElement.dataset.motion='paused'}catch(e){}</script>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="assets/fonts/f1.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"
+} }
+</script>
+<link rel="modulepreload" href="car.js">
+<link rel="preload" href="assets/car.glb" as="fetch" crossorigin>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="page" id="page">
+
+  <header class="nav">
+    <a href="#top" class="nav-brand" aria-label="Pranav Kondapaneni, back to top">
+      <span class="badge">PK</span>
+      <span class="nav-name">Pranav Kondapaneni</span>
+    </a>
+    <div class="hud" data-metal aria-hidden="true">
+      <div class="hud-leds">
+        <span data-led="#35ff75"></span><span data-led="#35ff75"></span><span data-led="#35ff75"></span><span data-led="#35ff75"></span>
+        <span data-led="#ff2b1c"></span><span data-led="#ff2b1c"></span><span data-led="#ff2b1c"></span><span data-led="#ff2b1c"></span>
+        <span data-led="#4d7bff"></span><span data-led="#4d7bff"></span><span data-led="#4d7bff"></span><span data-led="#4d7bff"></span>
+      </div>
+      <div class="hud-read">
+        <div class="hud-speed"><b data-hud="speed">000</b><span class="hud-unit">KM/H</span></div>
+        <div class="hud-gear"><small>GEAR</small><b data-hud="gear">N</b></div>
+      </div>
+    </div>
+    <nav class="nav-menu" aria-label="Sections">
+      <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav-links" data-menu>
+        <span class="menu-icon" aria-hidden="true"></span><span class="menu-label">Menu</span>
+      </button>
+      <ul class="nav-links" id="nav-links">
+        <li><a href="#driver">01 Driver</a></li>
+        <li><a href="#stints">02 Stints</a></li>
+        <li><a href="#setup">03 Setup</a></li>
+        <li><a href="#academy">04 Academy</a></li>
+        <li><a href="#radio">05 Radio</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main id="main" tabindex="-1">
+
+  <section id="top" class="hero" data-hero>
+    <canvas class="car-canvas" data-car aria-hidden="true"></canvas>
+    <div class="streaks" data-streaks aria-hidden="true"></div>
+
+    <div class="lights">
+      <div class="pods" aria-hidden="true">
+        <div class="pod"><span data-pod="0"></span><span data-pod="0"></span></div>
+        <div class="pod"><span data-pod="1"></span><span data-pod="1"></span></div>
+        <div class="pod"><span data-pod="2"></span><span data-pod="2"></span></div>
+        <div class="pod"><span data-pod="3"></span><span data-pod="3"></span></div>
+        <div class="pod"><span data-pod="4"></span><span data-pod="4"></span></div>
+      </div>
+      <span class="mono" data-lights-label aria-hidden="true">LIGHTS</span>
+      <button class="btn-ghost" type="button" data-heroin data-replay><span aria-hidden="true">↻</span> Restart race</button>
+      <button class="btn-ghost btn-motion" type="button" aria-pressed="false" data-motion><span aria-hidden="true" class="motion-icon"></span><span data-motion-label>Pause motion</span></button>
+    </div>
+
+    <h1 class="hero-name chrome" data-name data-obstacle aria-label="Pranav Kondapaneni">
+      <div aria-hidden="true" data-word="PRANAV"></div>
+      <div aria-hidden="true" data-word="KONDAPANENI"></div>
+    </h1>
+    <div class="stripe" data-stripe aria-hidden="true"></div>
+    <p class="hero-meta" data-heroin>
+      <span>Software Engineer · J.B. Hunt Transport</span>
+      <span>CS @ Georgia Tech</span>
+    </p>
+  </section>
+
+  <section id="driver" class="section" aria-labelledby="driver-title">
+    <p class="kicker" data-rev>01 / Driver profile</p>
+    <h2 class="section-title chrome-text" id="driver-title" data-rev data-obstacle>Driver</h2>
+    <div class="driver-grid">
+      <div class="plate portrait" data-rev data-metal data-obstacle>
+        <div class="portrait-frame">
+          <span class="portrait-number" aria-hidden="true">PK</span>
+          <picture>
+            <source srcset="assets/pranav.webp" type="image/webp">
+            <img src="assets/pranav.png" width="1000" height="1000" alt="Portrait of Pranav Kondapaneni" decoding="async">
+          </picture>
+        </div>
+        <div class="portrait-caption mono" aria-hidden="true"><span>PK</span><span>J.B. Hunt Transport</span></div>
+      </div>
+      <div class="driver-body">
+        <blockquote class="quote" data-rev><span class="q">“</span>My name is Pranav Kondapaneni. I am passionate about technology and problem solving.<span class="q">”</span></blockquote>
+        <dl class="spec carbon" data-rev data-obstacle>
+          <div><dt class="mono">Team</dt><dd>J.B. Hunt Transport Services, Inc.</dd></div>
+          <div><dt class="mono">Seat</dt><dd>Software Engineer</dd></div>
+          <div><dt class="mono">Academy</dt><dd>Georgia Institute of Technology</dd></div>
+          <div><dt class="mono">Driver code</dt><dd>PK</dd></div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <section id="stints" class="section" aria-labelledby="stints-title">
+    <p class="kicker" data-rev>02 / Timing tower</p>
+    <h2 class="section-title chrome-text" id="stints-title" data-rev data-obstacle>Stint history</h2>
+    <ol class="stints">
+      <li class="plate stint" data-rev data-metal data-obstacle>
+        <div class="stint-pos lead"><span class="sr-only">Position </span>P1</div>
+        <div><h3 class="stint-role">Software Engineer I</h3><div class="stint-team">J.B. Hunt Transport Services, Inc.</div></div>
+        <div class="stint-status mono"><img class="org-logo" src="assets/logos/jbhunt-white.png" alt="" width="160" height="40"><span class="live">On track<span class="sr-only"> (current role)</span></span></div>
+      </li>
+      <li class="plate stint" data-rev data-metal data-obstacle>
+        <div class="stint-pos"><span class="sr-only">Position </span>P2</div>
+        <div><h3 class="stint-role">Application Development Intern</h3><div class="stint-team">J.B. Hunt Transport Services, Inc.</div></div>
+        <div class="stint-status mono"><img class="org-logo" src="assets/logos/jbhunt-white.png" alt="" width="160" height="40"><span>Finished</span></div>
+      </li>
+      <li class="plate stint" data-rev data-metal data-obstacle>
+        <div class="stint-pos"><span class="sr-only">Position </span>P3</div>
+        <div><h3 class="stint-role">Peer Learning Assistant</h3><div class="stint-team">Missouri University of Science and Technology</div></div>
+        <div class="stint-status mono"><img class="org-logo tall" src="assets/logos/missouri-st-white.png" alt="" width="160" height="40"><span>Finished</span></div>
+      </li>
+    </ol>
+  </section>
+
+  <section id="setup" class="section" aria-labelledby="setup-title">
+    <p class="kicker" data-rev>03 / Setup sheet</p>
+    <h2 class="section-title chrome-text" id="setup-title" data-rev data-obstacle>Setup</h2>
+    <div class="setup-grid">
+      <div class="skills">
+        <h3 class="mono" id="skills-h" data-rev>Skills</h3>
+        <ul class="skill-list" aria-labelledby="skills-h">
+        <li class="skill" data-rev><span class="mono" aria-hidden="true">01</span><span class="skill-name">Agile Application Development</span><span class="mono">J.B. Hunt</span></li>
+        <li class="skill" data-rev><span class="mono" aria-hidden="true">02</span><span class="skill-name">Kubernetes</span><span class="mono">J.B. Hunt</span></li>
+        <li class="skill" data-rev><span class="mono" aria-hidden="true">03</span><span class="skill-name">TypeScript</span><span class="mono">J.B. Hunt</span></li>
+        <li class="skill" data-rev><span class="mono" aria-hidden="true">04</span><span class="skill-name">Kanban</span><span class="mono">J.B. Hunt</span></li>
+        <li class="skill" data-rev><span class="mono" aria-hidden="true">05</span><span class="skill-name">Critical Thinking and Communication</span><span class="mono"></span></li>
+        </ul>
+      </div>
+      <div class="plate langs" data-rev data-metal data-obstacle>
+        <h3 class="mono">Radio languages</h3>
+        <div class="lang"><div class="lang-head"><b>English</b><span class="mono">Native or bilingual</span></div><div class="leds" data-level="12" aria-hidden="true"></div></div>
+        <div class="lang"><div class="lang-head"><b>Telugu</b><span class="mono">Professional working</span></div><div class="leds" data-level="7" aria-hidden="true"></div></div>
+        <div class="lang"><div class="lang-head"><b>Hindi</b><span class="mono">Limited working</span></div><div class="leds" data-level="5" aria-hidden="true"></div></div>
+        <div class="lang"><div class="lang-head"><b>Tamil</b><span class="mono">Limited working</span></div><div class="leds" data-level="5" aria-hidden="true"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="academy" class="section" aria-labelledby="academy-title">
+    <p class="kicker" data-rev>04 / Junior categories</p>
+    <h2 class="section-title chrome-text" id="academy-title" data-rev data-obstacle>Academy</h2>
+    <div class="degrees">
+      <div class="plate degree" data-rev data-metal data-obstacle>
+        <div class="degree-top"><p class="kicker" aria-hidden="true">M.S.</p><img class="org-logo" src="assets/logos/georgia-tech-white.png" alt="" width="160" height="40"></div>
+        <h3 class="degree-field"><span class="sr-only">M.S. </span>Computer Science</h3>
+        <div class="degree-meta"><span>Georgia Institute of Technology</span><span class="mono">Jan 2025 – Present</span></div>
+      </div>
+      <div class="plate degree" data-rev data-metal data-obstacle>
+        <div class="degree-top"><p class="kicker" aria-hidden="true">B.S.</p><img class="org-logo" src="assets/logos/missouri-st-white.png" alt="" width="160" height="40"></div>
+        <h3 class="degree-field"><span class="sr-only">B.S. </span>Computer Science</h3>
+        <div class="degree-meta"><span>Missouri University of Science and Technology</span><span class="mono">Aug 2021 – Dec 2024</span></div>
+      </div>
+    </div>
+    <div class="clubs" data-rev>
+      <h3 class="mono" id="clubs-h">Paddock clubs</h3>
+      <ul class="club-list" aria-labelledby="clubs-h">
+        <li class="pill club">Eta Kappa Nu · Gamma Theta Chapter</li>
+        <li class="pill club">Google Developer Student Club</li>
+        <li class="pill club">Association for Computing Machinery</li>
+        <li class="pill club">PickHacks</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="radio" class="section" aria-labelledby="radio-title">
+    <p class="kicker" data-rev>05 / Team radio</p>
+    <h2 class="radio-title chrome-text" id="radio-title" data-rev data-obstacle>Box, box.</h2>
+    <div class="radio-cta" data-rev>
+      <a class="pill btn-primary" href="https://www.linkedin.com/in/pranavkondapaneni/" target="_blank" rel="noopener">Connect on LinkedIn <span aria-hidden="true">→</span><span class="sr-only"> (opens in a new tab)</span></a>
+      <span class="mono" aria-hidden="true">Channel open</span>
+    </div>
+  </section>
+  </main>
+
+  <footer class="footer mono">
+    <span>© 2026 Pranav Kondapaneni</span>
+    <a href="#top">Back to grid <span aria-hidden="true">↑</span></a>
+  </footer>
+</div>
+<script src="main.js"></script>
+<script type="module" src="car.js"></script>
+<script type="module" src="windtunnel.js"></script>
+<script type="module" src="metal.js"></script>
+</body>
+</html>

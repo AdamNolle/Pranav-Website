@@ -1,0 +1,43 @@
+{
+  "smoke": {
+    "file": "smoke-atlas.webp",
+    "cell": 256,
+    "cols": 8,
+    "rows": 4,
+    "frames": {
+      "filament": [
+        0,
+        11
+      ],
+      "puff": [
+        12,
+        21
+      ],
+      "curl": [
+        22,
+        31
+      ]
+    }
+  },
+  "motes": {
+    "file": "motes.webp",
+    "cell": 128,
+    "cols": 4,
+    "rows": 1,
+    "frames": [
+      "glow",
+      "bokeh-round",
+      "bokeh-hex",
+      "streak"
+    ],
+    "encoding": "white RGB, alpha = emitted light (additive mask)"
+  },
+  "wisp": {
+    "file": "wisp.webp",
+    "size": 512,
+    "tileable": true,
+    "channel": "alpha = density"
+  },
+  "alpha": "straight (unassociated). Premultiply on upload: gl.pixelStorei(UNPACK_PREMULTIPLY_ALPHA_WEBGL, true).",
+  "renderer": "Cycles (Metal GPU) + OpenImageDenoise, Standard view transform"
+}

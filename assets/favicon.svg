@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4b90ff"/><stop offset=".5" stop-color="#2b7bff"/><stop offset="1" stop-color="#0b3a9e"/></linearGradient></defs>
+  <rect width="64" height="64" rx="16" fill="#050608"/>
+  <rect x="6" y="16" width="52" height="32" rx="16" fill="url(#g)"/>
+  <text x="32" y="41" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-style="italic" font-size="22" fill="#fff" letter-spacing="-0.5">PK</text>
+</svg>
