@@ -1753,8 +1753,9 @@ def livery():
     for s, d in side_views:
         logo_decal('georgia-tech', [body, airbox], (-0.52, s * 0.6, 0.62), d, (0.35, 0, 1), height=0.075)
         eps = [o for o in col.objects if o.name.startswith('RW_Endplate') and (o.matrix_world @ o.data.vertices[0].co).y * s > 0]
-        logo_decal('jbhunt', eps, (-2.265, s * 1.0, 0.85), d, (0, 0, 1), width=0.44)
-        logo_decal('georgia-tech-wordmark', eps, (-2.27, s * 1.0, 0.735), d, (0, 0, 1), width=0.30)
+        # sized to the endplate (0.52 m x 0.68 m) so both marks read at hero scale
+        logo_decal('jbhunt', eps, (-2.245, s * 1.0, 0.878), d, (0, 0, 1), width=0.48)
+        logo_decal('georgia-tech-wordmark', eps, (-2.245, s * 1.0, 0.70), d, (0, 0, 1), width=0.46)
     # 5) J.B. Hunt across the DRS flap (seen from above/behind)
     flap = [o for o in col.objects if o.name.startswith('RW_DRSFlap')]
     logo_decal('jbhunt', flap, (-2.40, 0, 1.4), (0.35, 0, -1), (-1, 0, 0), width=0.62)
@@ -1925,6 +1926,7 @@ if VIEWS:
         'rear': ((-5.5, -3.6, 1.9), (-0.6, 0, 0.45), 50),
         'top': ((0.3, 0.0, 12.0), (0.3, 0, 0), 50),
         'detail': ((-1.2, 2.2, 1.6), (0.3, 0.3, 0.6), 50),
+        'endplate': ((-2.1, 2.6, 0.95), (-2.25, 0.48, 0.72), 50),
         'hero': ((-3.4, 5.6, 1.35), (0.2, 0, 0.42), 45),
     }
     for v in VIEWS:
