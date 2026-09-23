@@ -7,7 +7,7 @@ Run from the repo root (Blender 5.2, headless):
 
 Stages
   surface    Tileable brush height field (numpy inside Blender), converted to a tangent-space
-             normal map, roughness map and albedo/tint map at 2048^2 and 1024^2.
+             normal map, roughness map and albedo/tint map (generated at 2048^2, shipped at 1024^2).
              Brush direction is +X (image rows). Normals are OpenGL convention (+Y = image up).
   fastener   Cycles render of a countersunk Torx titanium bolt head: normal (+alpha) and
              albedo (+AO) sprites at 128^2.
@@ -205,47 +205,36 @@ def box_down(a):
 
 
 def build_surface():
+    """Graphite anodised aluminium: fine bead-blast texture with a barely visible directional
+    brush on top. Low slope everywhere, so reflections stay broad and the plate stays calm."""
     print('[surface]')
     n = 2048
-    hp = lambda ky, p: 1 - np.exp(-(ky * p) ** 2)            # kills slow variation across the brush
-    lp = lambda ky: np.exp(-(ky / 0.45) ** 2)                 # soft roll-off before Nyquist
+    hp = lambda ky, p: 1 - np.exp(-(ky * p) ** 2)
+    lp = lambda ky: np.exp(-(ky / 0.45) ** 2)
 
-    # Fine brush grooves: three populations of different lengths along +X.
-    short = spectral(n, lambda kx, ky: np.exp(-(kx * 70) ** 2) * hp(ky, 5) * lp(ky))
-    mid = spectral(n, lambda kx, ky: np.exp(-(kx * 320) ** 2) * hp(ky, 8) * lp(ky))
-    long_ = spectral(n, lambda kx, ky: np.exp(-(kx * 1100) ** 2) * hp(ky, 9) * np.exp(-(ky / 0.34) ** 2))
-    g = 0.45 * short + 0.55 * mid + 0.5 * long_
-    g = np.sign(g) * np.abs(g) ** 1.35                        # a few deeper cuts, many shallow
+    # Bead blast: dense isotropic micro-dimples (band-limited noise, 1-2.5 texel features).
+    bead = spectral(n, lambda kx, ky: np.exp(-((kx ** 2 + ky ** 2) / 0.36 ** 2)) * (1 - np.exp(-((kx ** 2 + ky ** 2) * 6 ** 2))))
+    bead = -np.abs(bead) ** 1.2                                # dimples, not bumps
 
-    # Brush pressure: bands across the sheet where the grain is stronger or weaker.
-    band = spectral(n, lambda kx, ky: np.exp(-((kx * 700) ** 2 + (ky * 90) ** 2)))
-    g *= 1 + 0.32 * band
-
-    # Waviness: the abrasive never tracks perfectly straight.
+    # Faint brush on top: fine, long, shallow, along +X.
+    brush = 0.6 * spectral(n, lambda kx, ky: np.exp(-(kx * 260) ** 2) * hp(ky, 6) * lp(ky)) \
+          + 0.4 * spectral(n, lambda kx, ky: np.exp(-(kx * 900) ** 2) * hp(ky, 8) * lp(ky))
     wav = spectral(n, lambda kx, ky: np.exp(-((kx * 260) ** 2 + (ky * 160) ** 2)))
-    h = warp_rows(g, 1.2 * wav).astype(np.float32)
+    brush = warp_rows(brush, 0.8 * wav)
+
+    h = (bead / bead.std() + 0.45 * brush / brush.std()).astype(np.float32)
+    # a handful of very faint stray marks, nothing that reads as a scratch at arm's length
+    for i in range(10):
+        splat_scratch(h, n, x0=rng.uniform(0, n), y0=rng.uniform(0, n), length=rng.uniform(200, 900),
+                      angle=np.radians(rng.normal(0, 1.5)), depth=rng.uniform(0.6, 1.1),
+                      width=rng.uniform(0.6, 0.9), bow=rng.normal(0, 2))
     h /= h.std()
 
-    # Occasional deeper stray scratches at small angles.
-    for i in range(70):
-        deep = i < 12
-        splat_scratch(h, n,
-                      x0=rng.uniform(0, n), y0=rng.uniform(0, n),
-                      length=rng.uniform(300, 1500) if deep else rng.uniform(80, 700),
-                      angle=np.radians(rng.normal(0, 2.2 if not deep else 1.2)),
-                      depth=rng.uniform(3.0, 5.0) if deep else rng.uniform(1.2, 2.6),
-                      width=rng.uniform(0.6, 1.1),
-                      bow=rng.normal(0, 3))
-    splat_pits(h, n, 2600)
-
-    # Very low-frequency sheet undulation (slope std ~ 0.004 in the grain's height units later).
     und = spectral(n, lambda kx, ky: np.exp(-((kx ** 2 + ky ** 2) * 700 ** 2)))
-
-    nrm_hi, k = normals_from_height(h, slope_std_y=0.16)
-    # Add undulation after scaling so its slope is set in absolute terms.
+    nrm_hi, k = normals_from_height(h, slope_std_y=0.07)
     ug_x = (np.roll(und, -1, 1) - np.roll(und, 1, 1)) * 0.5
     ug_y = (np.roll(und, -1, 0) - np.roll(und, 1, 0)) * 0.5
-    us = 0.012 / (np.sqrt((ug_x ** 2 + ug_y ** 2).mean()) + 1e-12)
+    us = 0.003 / (np.sqrt((ug_x ** 2 + ug_y ** 2).mean()) + 1e-12)
 
     def pack(hh, uu, kk):
         gx = (np.roll(hh, -1, 1) - np.roll(hh, 1, 1)) * 0.5 * kk + (np.roll(uu, -1, 1) - np.roll(uu, 1, 1)) * 0.5 * us
@@ -254,24 +243,22 @@ def build_surface():
         inv = 1 / np.sqrt(nx * nx + ny * ny + 1)
         return np.stack([nx * inv, ny * inv, inv], -1)
 
-    # Roughness: rougher in and around grooves (smeared along the brush), banded like the grain.
-    energy = np.abs(h)
-    ef = np.fft.rfft2(energy)
-    ky = np.fft.fftfreq(n)[:, None]; kx = np.fft.rfftfreq(n)[None, :]
-    energy = np.fft.irfft2(ef * np.exp(-((kx * 60) ** 2 + (ky * 1.2) ** 2)), s=(n, n)).astype(np.float32)
-    energy = (energy - energy.mean()) / energy.std()
-    rough = np.clip(0.42 + 0.07 * energy + 0.06 * band + 0.03 * short, 0.2, 0.7)
+    # Roughness ~0.42 +- 0.03: slightly rougher along brush passes, smoother on dimple floors.
+    band = spectral(n, lambda kx, ky: np.exp(-((kx * 700) ** 2 + (ky * 90) ** 2)))
+    rough = np.clip(0.42 + 0.02 * band + 0.012 * brush / brush.std() - 0.01 * bead / bead.std(), 0.3, 0.55)
 
-    # Albedo: dark gunmetal anodise with a faint blue cast (sRGB-encoded F0 colour).
+    # Albedo: neutral graphite, faintest cool tint, +-1% mottling (sRGB-encoded F0 colour).
     blot = spectral(n, lambda kx, ky: np.exp(-((kx ** 2 + ky ** 2) * 220 ** 2)))
-    dye = spectral(n, lambda kx, ky: np.exp(-((kx * 500) ** 2 + (ky * 40) ** 2)))
-    base = np.array([0.46, 0.50, 0.58], np.float32)
-    lum = 1 + 0.035 * blot + 0.02 * band - 0.035 * np.clip(-h / 3, 0, 1)
+    base = np.array([0.43, 0.44, 0.46], np.float32)
+    lum = 1 + 0.01 * blot + 0.006 * band
     alb = base[None, None, :] * lum[..., None]
-    alb[..., 2] *= 1 + 0.02 * dye
-    alb[..., 0] *= 1 - 0.01 * dye
 
-    for size, tag in ((2048, '2k'), (1024, '1k')):
+    # The bead blast is isotropic noise, so a lossless 2k normal map is ~6 MB. At this low contrast a
+    # 1024^2 tile does not visibly repeat, so only the 1k set ships (the 2k field is box-filtered down).
+    for f in os.listdir(OUT):
+        if f.startswith('brushed_') and '_2k' in f:
+            os.remove(os.path.join(OUT, f))
+    for size, tag in ((1024, '1k'),):
         if size == 1024:
             hh, uu, rr, aa = box_down(h), box_down(und), box_down(rough), box_down(alb)
             kk = k * 0.85                                     # keep grain slope similar after averaging
@@ -280,16 +267,16 @@ def build_surface():
             kk = k
         nm = pack(hh, uu, kk)
         enc = np.clip(nm * 0.5 + 0.5, 0, 1)
-        p = os.path.join(WORK, f'normal_{tag}.png'); save_png(p, enc); webp(p, f'brushed_normal_{tag}.webp', True)
+        p = os.path.join(WORK, f'normal_{tag}.png'); save_png(p, enc); webp(p, f'brushed_normal_{tag}.webp', False, 92)   # lossy keeps the page light; fine grain survives q92
         p = os.path.join(WORK, f'rough_{tag}.png'); save_png(p, rr); webp(p, f'brushed_rough_{tag}.webp', False, 80)
         p = os.path.join(WORK, f'albedo_{tag}.png'); save_png(p, aa); webp(p, f'brushed_albedo_{tag}.webp', False, 90)
-        if size == 2048:
+        if size == 1024:
             # seam checks: whole 2x2 (downsampled) and a 1:1 crop around the four-way seam
-            tile_preview(box_down(enc), 'tile_normal_2x2.png')
+            tile_preview(enc, 'tile_normal_2x2.png')
             tile_preview(enc, 'tile_normal_seam.png', crop=256)
             shade = np.clip(0.5 + 2.2 * (nm[..., 1] * 0.8 + nm[..., 0] * 0.2), 0, 1)
             tile_preview(shade, 'tile_shade_seam.png', crop=256)
-            tile_preview(box_down(rr), 'tile_rough_2x2.png')
+            tile_preview(rr, 'tile_rough_2x2.png')
 
 
 # ================================================================ 2. fastener
@@ -564,17 +551,14 @@ def studio(sc):
         ob.data.uv_layers.new()
         return ob
 
-    # key: large overhead softbox, slightly in front of the plate
-    softbox('Key', (9, 5), (0, -5, 9), (1.0, 0.985, 0.96), 7.0)
-    # long horizontal strip high in front (the classic product-shot top strip)
-    softbox('StripTop', (14, 0.5), (0, -12, 6), (0.95, 0.97, 1.0), 16.0)
-    # two vertical strips left/right in front
-    softbox('StripL', (0.6, 8), (-9, -9, 1.5), (0.9, 0.94, 1.0), 9.0)
-    softbox('StripR', (0.6, 8), (9, -9, 1.5), (0.9, 0.94, 1.0), 9.0)
-    # cool blue kicker from below, in front
-    softbox('RimBlue', (12, 2.5), (0, -7, -7), (0.17, 0.45, 1.0), 5.0)
+    # key: one very large softbox high and to the left (soft gradient + top-left edge light)
+    softbox('Key', (12, 9), (-7, -8, 8), (1.0, 0.99, 0.97), 4.5)
+    # fill: broad, dim, right and a little low
+    softbox('Fill', (10, 8), (9, -10, -1), (0.92, 0.95, 1.0), 0.7)
+    # faint cool kicker below so the lower edge is not dead black
+    softbox('Kicker', (14, 3), (0, -7, -8), (0.62, 0.7, 0.85), 0.35)
     # faint card behind the camera so the black is not perfectly dead
-    softbox('Bounce', (20, 12), (0, -22, 0), (0.55, 0.62, 0.8), 0.018, falloff=False)
+    softbox('Bounce', (20, 12), (0, -22, 0), (0.8, 0.82, 0.86), 0.012, falloff=False)
 
 
 def build_env():
@@ -619,7 +603,7 @@ def build_env():
         return np.maximum(out, 0)
 
     p = os.path.join(WORK, 'env_sharp.png'); save_png(p, enc(env)); webp(p, 'studio_env.webp', False, 92)
-    soft = blur(env, 26, 26)
+    soft = blur(env, 40, 40)
     soft = box_down(box_down(soft))
     p = os.path.join(WORK, 'env_soft.png'); save_png(p, enc(soft)); webp(p, 'studio_env_soft.webp', False, 92)
 
@@ -659,19 +643,19 @@ def build_reference():
         bm.faces.new([bot[i], bot[j], top[j], top[i]])
     me = bpy.data.meshes.new('Plate'); bm.to_mesh(me); bm.free()
     plate = bpy.data.objects.new('Plate', me); sc.collection.objects.link(plate)
-    # UVs in texel space: 2 texels per CSS px (DPR 2) -> 2048 texels = 10.24 units
+    # UVs in texel space: 2 texels per CSS px (DPR 2) -> 1024 texels = 5.12 units
     uvl = me.uv_layers.new(name='UVMap')
     for poly in me.polygons:
         for li in poly.loop_indices:
             v = me.vertices[me.loops[li].vertex_index].co
-            uvl.data[li].uv = (v.x / 10.24 + 0.13, v.y / 10.24 + 0.37)
+            uvl.data[li].uv = (v.x / 5.12 + 0.13, v.y / 5.12 + 0.37)
     for p in me.polygons:
         p.use_smooth = False
     bev = plate.modifiers.new('roll', 'BEVEL')          # soft rolled edge
-    bev.width = 0.11; bev.segments = 10; bev.limit_method = 'ANGLE'; bev.angle_limit = math.radians(40)
+    bev.width = 0.08; bev.segments = 10; bev.limit_method = 'ANGLE'; bev.angle_limit = math.radians(40)
     bev.profile = 0.62
     bev2 = plate.modifiers.new('chamfer', 'BEVEL')      # crisp machined chamfer on the new outer edge
-    bev2.width = 0.012; bev2.segments = 1; bev2.limit_method = 'ANGLE'; bev2.angle_limit = math.radians(25)
+    bev2.width = 0.0125; bev2.segments = 1; bev2.limit_method = 'ANGLE'; bev2.angle_limit = math.radians(25)
     ws = plate.modifiers.new('ws', 'WEIGHTED_NORMAL'); ws.keep_sharp = True
 
     m, nt, out = node_mat('Anodised')
@@ -684,35 +668,35 @@ def build_reference():
         img.colorspace_settings.name = 'Non-Color' if noncolor else 'sRGB'
         t = N.new('ShaderNodeTexImage'); t.image = img; t.interpolation = 'Cubic'
         return t
-    tn, tr, ta = tex('normal_2k.png'), tex('rough_2k.png'), tex('albedo_2k.png', False)
+    tn, tr, ta = tex('normal_1k.png'), tex('rough_1k.png'), tex('albedo_1k.png', False)
     nm = N.new('ShaderNodeNormalMap'); nm.space = 'TANGENT'; nm.uv_map = 'UVMap'
-    nm.inputs['Strength'].default_value = 0.45
+    nm.inputs['Strength'].default_value = 0.6
     nt.links.new(tn.outputs['Color'], nm.inputs['Color'])
     nt.links.new(nm.outputs['Normal'], b.inputs['Normal'])
     mr = N.new('ShaderNodeMapRange')
     mr.inputs['From Min'].default_value = 0.0; mr.inputs['From Max'].default_value = 1.0
-    mr.inputs['To Min'].default_value = 0.0; mr.inputs['To Max'].default_value = 0.72
+    mr.inputs['To Min'].default_value = 0.0; mr.inputs['To Max'].default_value = 1.0
     nt.links.new(tr.outputs['Color'], mr.inputs['Value'])
     nt.links.new(mr.outputs[0], b.inputs['Roughness'])
     tint = N.new('ShaderNodeMix'); tint.data_type = 'RGBA'; tint.blend_type = 'MULTIPLY'
     tint.inputs['Factor'].default_value = 1.0
     nt.links.new(ta.outputs['Color'], tint.inputs['A'])
-    tint.inputs['B'].default_value = (0.30, 0.34, 0.42, 1)
+    tint.inputs['B'].default_value = (0.55, 0.55, 0.57, 1)
     nt.links.new(tint.outputs['Result'], b.inputs['Base Color'])
     b.inputs['Metallic'].default_value = 1.0
-    b.inputs['Anisotropic'].default_value = 0.75
+    b.inputs['Anisotropic'].default_value = 0.3
     tg = N.new('ShaderNodeTangent'); tg.direction_type = 'UV_MAP'; tg.uv_map = 'UVMap'
     nt.links.new(tg.outputs['Tangent'], b.inputs['Tangent'])
     me.materials.append(m)
     plate.rotation_euler = (math.radians(90), 0, 0)      # local +Z (front) -> world -Y
 
-    # fasteners at the corners (6.5 px radius, 22 px inset)
+    # small flush fasteners at the corners (4.5 px radius, 20 px inset)
     for sx in (-1, 1):
         for sy in (-1, 1):
-            parts = make_bolt('beauty', scale=0.065)
+            parts = make_bolt('beauty', scale=0.045)
             for ob in parts:
                 ob.parent = plate
-                ob.location = (sx * (W / 2 - 0.22), sy * (H / 2 - 0.22), T / 2)
+                ob.location = (sx * (W / 2 - 0.2), sy * (H / 2 - 0.2), T / 2)
 
     # backdrop the plate sits in front of (the page), 40 px behind it
     bd_m, bd_nt, bd_out = node_mat('Backdrop')
@@ -725,7 +709,7 @@ def build_reference():
 
     # pointer strip light (the web version's moving light), parked on the right third
     ld = bpy.data.lights.new('Pointer', 'AREA'); ld.shape = 'RECTANGLE'; ld.size = 0.36; ld.size_y = 1.6
-    ld.energy = 900; ld.color = (0.85, 0.92, 1.0)
+    ld.energy = 160; ld.color = (0.85, 0.92, 1.0)
     lo = bpy.data.objects.new('Pointer', ld); lo.location = (1.4, -2.6, 0.9)
     from mathutils import Vector
     lo.rotation_euler = (Vector((1.4, 0, 0.4)) - Vector(lo.location)).to_track_quat('-Z', 'Y').to_euler()

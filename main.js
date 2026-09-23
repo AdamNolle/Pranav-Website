@@ -114,18 +114,18 @@
       p.forEach(el => { el.style.background = '#ff2415'; el.style.boxShadow = '0 0 18px 4px rgba(255,36,21,0.6), inset 0 -3px 6px rgba(0,0,0,0.35)'; });
       boost = Math.max(boost, 20 + i * 12);
       dispatchEvent(new CustomEvent('race:light', { detail: i }));
-    }, 350 + i * 300)));
+    }, 150 + i * 190)));
     timers.push(setTimeout(() => {
       off(); label.textContent = 'LIGHTS OUT';
       fly();
-    }, 350 + 4 * 300 + 450 + Math.random() * 450));
+    }, 150 + 4 * 190 + 260 + Math.random() * 200));
   }
 
   function fly() {
     const hb = hero.getBoundingClientRect();
     const sc = root.querySelector('[data-streaks]');
     const acc = getComputedStyle(root).getPropertyValue('--acc').trim() || '#2b7bff';
-    const step = 58, dur = 560;
+    const step = 40, dur = 480;
     const rects = letters.map(l => l.getBoundingClientRect());
     root.style.setProperty('--nameo', '1');
     boost = 330;

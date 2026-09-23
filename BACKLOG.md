@@ -16,7 +16,17 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
 4. **F1 car to near 1:1 with a real car:** keep iterating `blender/build_car.py` against reference photos and dimensions of a real 2024–25 car (Williams FW46 in blue and black is the best reference). Proportions first, then surfacing, then detail. Aim for a beautiful original livery with properly sized logos, and soft-plus-hard studio lighting.
 5. **Texture quality everywhere:** no visible tiling, banding, aliasing, blur or stretching on the car, metal cards, smoke sprites, logos or portrait. Check each at 2× DPR.
 
+## Done (2026-09-23)
+- **Wind tunnel:** switched to a fixed-timestep solver. Desktop now holds 59–60 fps with p99 frame time 16.8 ms, and the shaking is gone.
+- **Performance:**
+  - WebGL layers start in stages after first paint, and phones skip the WebGL metal.
+  - WebP logos and shadow; metal maps cut to 1K lossy (208 KB total).
+  - Mobile page weight is down from 3.1 MB to 1.46 MB, load to about 1.0 s, and LCP from 3.7 s to 2.7 s (throttled 4G at 4× CPU). CLS is 0.006.
+- **Metal:** redesigned as calm graphite anodise with a soft key light and one soft sheen; text contrast is at least 7:1.
+- **Layout:** the nav now has a solid blurred backing at every width, so nothing collides with it. The hero name is fitted to the screen width. The redline strip spans the full top edge. PNG/ICO favicons and a web manifest are in.
+
 ## Also open
+- LCP is still just over 2.5 s on throttled mobile, because the intro holds the name back. Consider painting the name immediately in a dimmed state.
 - The metal cards need a calmer, premium look (a subagent redesign was in progress 2026-09-23).
 - A car livery and lighting pass was in progress (subagent).
 - Measure contrast by eye over the moving smoke and metal (axe can't measure over canvases).

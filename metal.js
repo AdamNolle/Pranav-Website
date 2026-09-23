@@ -62,7 +62,8 @@ void main() {
 
 const FS_PLATE = COMMON + `
 uniform vec2 uView;
-uniform float uDpr, uTexel, uTexSize, uCamZ, uGrain, uEnvI, uExposure, uCap;
+uniform float uDpr, uTexel, uTexSize, uCamZ, uGrain, uEnvI, uExposure, uCap, uKey;
+uniform vec3 uTint;
 uniform vec3 uPtr;        // pointer light, y-up world coords
 uniform sampler2D uNormal, uRough, uAlbedo, uEnv, uEnvSoft, uBoltN, uBoltA;
 
@@ -97,26 +98,17 @@ vec3 sphereLight(vec3 P, vec3 N, vec3 T, vec3 B, vec3 V, vec3 Lp, float rad, vec
 vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
 float hash(vec2 p) { p = fract(p * vec2(443.897, 441.423)); p += dot(p, p.yx + 19.19); return fract((p.x + p.y) * p.x); }
 
-vec3 shade(vec3 P, vec3 N, vec3 T, vec3 V, float ax, float ay, vec3 F0, float ao, float spread) {
+// Soft light: one very large key high on the left, a dim fill low right, the Blender studio env.
+vec3 shade(vec3 P, vec3 N, vec3 T, vec3 V, float ax, float ay, vec3 F0, float ao) {
   vec3 B = cross(N, T);
-  vec3 c = vec3(0.0);
-  // key: big overhead softbox; pointer strip (3 taps along its length); cool blue rim from below
-  c += sphereLight(P, N, T, B, V, vec3(uView.x * 0.5, uView.y * 0.45, 1100.0), 650.0, vec3(1.0, 0.97, 0.93) * 1.2, ax, ay, F0);
-  vec3 pc = vec3(0.82, 0.9, 1.0) * uPtr.z;
-  for (int i = -1; i <= 1; i++)
-    c += sphereLight(P, N, T, B, V, vec3(uPtr.xy + vec2(0.0, float(i) * 70.0), 300.0), 38.0, pc * 0.55, ax, ay, F0);
-  c += sphereLight(P, N, T, B, V, vec3(uView.x * 0.5, -uView.y * 1.35, 420.0), 520.0, vec3(0.17, 0.45, 1.0) * 0.8, ax, ay, F0);
-  // environment: taps smeared across the brush direction, as brushed metal smears reflections
+  vec3 c = sphereLight(P, N, T, B, V, vec3(uView.x * 0.1, uView.y * 0.6, 1000.0), 1300.0, vec3(1.0, 0.99, 0.97) * uKey, ax, ay, F0);
+  c += sphereLight(P, N, T, B, V, vec3(uView.x * 1.1, -uView.y * 0.7, 800.0), 1000.0, vec3(0.92, 0.95, 1.0) * 0.22 * uKey, ax, ay, F0);
   vec3 R = reflect(-V, N);
   float NV = max(dot(N, V), 1e-4);
-  float lod = clamp(ax * 16.0, 0.0, 6.0), soft = smoothstep(0.25, 0.8, ay);
-  vec3 e = vec3(0.0); float ws = 0.0;
-  for (int i = -3; i <= 3; i++) {
-    float k = float(i) / 3.0, w = exp(-2.5 * k * k);
-    e += w * envAt(normalize(R + B * (k * ay * spread)), lod, soft); ws += w;
-  }
-  vec3 Fe = F0 + (1.0 - F0) * pow(1.0 - NV, 5.0) * (1.0 - min(ay, 0.9));
-  return c + e / ws * Fe * uEnvI * ao;
+  vec3 e = vec3(0.0);
+  for (int i = -1; i <= 1; i++) e += envAt(normalize(R + B * (float(i) * ay * 0.8)), 4.0, 0.75);
+  vec3 Fe = F0 + (1.0 - F0) * pow(1.0 - NV, 5.0) * 0.35;
+  return (c + e / 3.0 * Fe * uEnvI) * ao;
 }
 
 void main() {
@@ -131,73 +123,76 @@ void main() {
   float e = max(-sd, 0.0);
   vec2 gs = vec2(g.x, -g.y);                   // y-up
 
-  // Edge profile: a crisp 1.75px 45deg machined chamfer, then a 12px rolled edge.
-  float cw = 1.75;
-  float chamf = 1.0 - smoothstep(cw - 0.5 * px, cw + 0.5 * px, e);
-  float t = clamp((e - cw) / 9.0, 0.0, 1.0);
-  float slope = mix(0.36 * (1.0 - t) * (1.0 - t), 1.0, chamf);
+  // Edge profile: a thin 1.25px chamfer with a soft shoulder, then a gentle 8px roll.
+  float cw = 1.25;
+  float chamf = 1.0 - smoothstep(cw - 0.6, cw + 0.9, e);
+  float t = clamp((e - cw) / 8.0, 0.0, 1.0);
+  float slope = mix(0.3 * (1.0 - t) * (1.0 - t), 0.85, chamf);
   vec3 N0 = normalize(vec3(gs * slope, 1.0));
 
   vec2 vp = vRect.xy + vLocal;
   vec3 P = vec3(vp.x, -vp.y, 0.0);
   vec3 V = normalize(vec3(uView.x * 0.5, -uView.y * 0.5, uCamZ) - P);
 
-  // Brush maps, locked to the plate in css px (texel density = DPR), per-plate offset.
-  vec2 uv = (vLocal * uTexel + vParam.z * vec2(977.0, 613.0)) / uTexSize;
+  // Bead-blast + faint brush maps, locked to the plate in css px (texel density = DPR).
+  vec2 uv = (vLocal * uTexel + vParam.z * vec2(577.0, 313.0)) / uTexSize;
   vec3 nb = texture(uNormal, uv).xyz * 2.0 - 1.0;
-  float groove = clamp(abs(nb.y) * 3.0, 0.0, 1.0);   // across-brush slope: groove walls
-  float grain = uGrain * mix(0.15, 1.0, smoothstep(1.5, 5.0, e)) * (1.0 - clamp(blur / 5.0, 0.0, 0.9));
-  nb = normalize(vec3(nb.xy * grain, max(nb.z, 0.2)));
+  float grain = uGrain * (1.0 - clamp(blur / 5.0, 0.0, 0.9));
+  vec3 nbs = normalize(vec3(nb.xy * grain, max(nb.z, 0.2)));
   vec3 T0 = normalize(vec3(1, 0, 0) - N0 * N0.x);
-  vec3 N = normalize(T0 * nb.x + cross(N0, T0) * nb.y + N0 * nb.z);
+  vec3 N = normalize(T0 * nbs.x + cross(N0, T0) * nbs.y + N0 * nbs.z);
+  vec3 T = normalize(vec3(1, 0, 0) - N * N.x);
+  vec3 B = cross(N, T);
 
-  // Anisotropy tangent: the brush (+X) on the face, the edge direction on the chamfer.
-  vec3 te = vec3(-gs.y, gs.x, 0.0); te *= sign(te.x + 1e-4);
-  vec3 td = normalize(mix(vec3(1, 0, 0), te, chamf));
-  vec3 T = normalize(td - N * dot(td, N));
-
-  float rough = texture(uRough, uv).r;
+  float rough = texture(uRough, uv).r;                 // ~0.42
   vec3 alb = pow(texture(uAlbedo, uv).rgb, vec3(2.2));
-  vec3 F0 = alb * mix(vec3(0.62, 0.62, 0.64), vec3(1.0), chamf);   // anodised dark; chamfer cut to bare metal
-  float ax = mix(0.04 + 0.08 * rough, 0.035, chamf);
-  float ay = mix(0.18 + 0.42 * rough, 0.10, chamf);
-  float ao = max(mix(0.55, 1.0, smoothstep(cw, 10.0, e)), chamf);
-  vec3 col = shade(P, N, T, V, ax, ay, F0, ao, 1.5);
-  col += alb * 0.006 * ao * (0.4 + 0.6 * max(N.y, 0.0));          // faint dye scatter
+  vec3 F0 = alb * uTint;                               // graphite anodise
+  float ax = mix(rough * 0.8, 0.2, chamf), ay = mix(rough * 1.2, 0.24, chamf);
+  float ao = mix(0.6, 1.0, smoothstep(0.0, 9.0, e));
+  vec3 col = shade(P, N, T, V, ax, ay, F0, ao);
 
-  // Fasteners: countersunk Torx heads (mode 1: four corners, mode 2: two ends).
-  float mode = vParam.w, fmask = 0.0;
-  if (mode > 0.5) {
-    float fr = mode > 1.5 ? 5.5 : clamp(min(size.x, size.y) * 0.05, 5.5, 7.0);
+  // Hard light: ONE narrow anisotropic sheen band from the pointer light (narrow across the
+  // faint brush, long along it), on the face only, fading softly.
+  float faceW = smoothstep(4.0, 12.0, e);
+  vec3 Lp = vec3(uPtr.xy, 520.0) - P;
+  col += ggxAniso(N, T, B, V, normalize(Lp), 0.075, 0.6, F0) * uPtr.z * faceW;
+
+  // Edges lit by the key: bright top-left, falling into shadow along the bottom.
+  float keyFacing = dot(gs, normalize(vec2(-0.45, 0.89)));
+  col *= mix(1.0, mix(0.12, 1.0, smoothstep(-0.35, 0.85, keyFacing)), 1.0 - faceW);
+
+  // Fasteners: tiny flush countersunk screws, cards only (mode 1).
+  float fmask = 0.0;
+  if (vParam.w > 0.5) {
+    float fr = 4.5;
     float ci = r * 0.72 + 2.0;
-    vec2 c = vec2(vLocal.x < size.x * 0.5 ? (mode > 1.5 ? 16.0 : ci) : size.x - (mode > 1.5 ? 16.0 : ci),
-                  mode > 1.5 ? size.y * 0.5 : (vLocal.y < size.y * 0.5 ? ci : size.y - ci));
+    vec2 c = vec2(vLocal.x < size.x * 0.5 ? ci : size.x - ci, vLocal.y < size.y * 0.5 ? ci : size.y - ci);
     vec2 d = vLocal - c;
     float dl = length(d);
-    col *= 1.0 - 0.45 * (1.0 - smoothstep(fr * 1.05, fr * 1.9, dl));   // shadowed countersink lip
+    col *= 1.0 - 0.18 * (1.0 - smoothstep(fr * 1.0, fr * 1.5, dl));
     if (dl < fr * 1.15) {
-      vec2 buv = d / (2.3 * fr) + 0.5;
-      vec4 bn = texture(uBoltN, buv), ba = texture(uBoltA, buv);
+      vec4 bn = texture(uBoltN, d / (2.3 * fr) + 0.5), ba = texture(uBoltA, d / (2.3 * fr) + 0.5);
       if (bn.a > 0.0) {
         vec3 fn = normalize(bn.xyz * 2.0 - 1.0);
-        vec3 ft = normalize(vec3(1, 0, 0) - fn * fn.x);
-        vec3 bf0 = pow(ba.rgb, vec3(2.2)) * vec3(1.02, 1.0, 0.98) * 1.05;
-        vec3 bc = (shade(P, fn, ft, V, 0.34, 0.4, bf0, ba.a, 0.6) + bf0 * 0.14 * (0.4 + 0.6 * max(fn.y, 0.0))) * mix(0.3, 1.0, ba.a);
-        col = mix(col, bc, bn.a);
+        vec3 bf0 = pow(ba.rgb, vec3(2.2)) * 0.5;
+        vec3 bc = shade(P, fn, normalize(vec3(1, 0, 0) - fn * fn.x), V, 0.35, 0.4, bf0, mix(0.4, 1.0, ba.a));
+        col = mix(col, bc, bn.a * 0.9);
         fmask = bn.a;
       }
     }
   }
 
   col = aces(col * uExposure);
-  // WCAG: behind text (the plate face) keep luminance under uCap; edges and fasteners may go hot.
-  float face = smoothstep(8.0, 14.0, e) * (1.0 - fmask);
+  // Readability: the face behind text is capped (soft knee) so body text keeps >= 7:1;
+  // the thin chamfer may go brighter but is soft-clipped so it never becomes a white rule.
+  float face = smoothstep(7.0, 12.0, e);
+  float cap = mix(0.3, mix(uCap, uCap * 1.6, fmask), face);
   float L = dot(col, vec3(0.2126, 0.7152, 0.0722));
-  float knee = uCap * 0.3;
-  float Lc = L <= knee ? L : knee + (uCap - knee) * (1.0 - exp(-(L - knee) / (uCap - knee)));
-  col *= mix(1.0, Lc / max(L, 1e-6), face);
-  // micro-shading after the cap (can only darken): groove walls and rough streaks stay visible in highlights
-  float micro = (1.0 - 0.45 * groove) * (1.0 - 0.6 * clamp(rough - 0.42, -0.2, 0.3));
+  float knee = cap * 0.55;
+  float Lc = L <= knee ? L : knee + (cap - knee) * (1.0 - exp(-(L - knee) / (cap - knee)));
+  col *= Lc / max(L, 1e-6);
+  // Fine grain, applied after the cap so it can only darken (about 2 percent).
+  float micro = 1.0 - 0.014 * clamp(length(nb.xy) * 4.0, 0.0, 1.0) - 0.006 * clamp((rough - 0.42) / 0.03, -1.0, 1.0);
   col *= mix(1.0, micro, face * grain / max(uGrain, 1e-3));
 
   vec3 srgb = mix(col * 12.92, 1.055 * pow(col, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, col));
@@ -218,16 +213,27 @@ const data = new Float32Array(MAX * STRIDE);
 
 function paused() { return reduce.matches || root.dataset.motion === 'paused'; }
 
-function compile(gl, vs, fs) {
+// Compiles and links without blocking the main thread where KHR_parallel_shader_compile exists:
+// the driver compiles in the background and we poll COMPLETION_STATUS once per frame.
+async function compile(gl, vs, fs) {
   const p = gl.createProgram();
-  for (const [type, src] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) {
-    const s = gl.createShader(type);
-    gl.shaderSource(s, src); gl.compileShader(s);
-    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
-    gl.attachShader(p, s);
-  }
+  const shaders = [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]].map(([type, src]) => {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src); gl.compileShader(sh); gl.attachShader(p, sh);
+    return sh;
+  });
   gl.linkProgram(p);
-  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const ext = gl.getExtension('KHR_parallel_shader_compile');
+  if (ext) {
+    while (!gl.getProgramParameter(p, ext.COMPLETION_STATUS_KHR)) {
+      if (gl.isContextLost()) throw new Error('context lost while compiling');
+      await new Promise(r => requestAnimationFrame(r));
+    }
+  }
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    const log = shaders.map(sh => gl.getShaderInfoLog(sh)).join('\n') + gl.getProgramInfoLog(p);
+    throw new Error(log);
+  }
   const u = {};
   const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
   for (let i = 0; i < n; i++) { const name = gl.getActiveUniform(p, i).name; u[name] = gl.getUniformLocation(p, name); }
@@ -256,11 +262,12 @@ function upload(gl, bmp, repeat, mips = true) {
   return t;
 }
 
-function initGL() {
+async function initGL() {
   const gl = state.canvas.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false, powerPreference: 'high-performance' });
   if (!gl) throw new Error('no webgl2');
   state.gl = gl;
-  state.progs = { shadow: compile(gl, VS, FS_SHADOW), plate: compile(gl, VS, FS_PLATE) };
+  const [shadow, plate] = await Promise.all([compile(gl, VS, FS_SHADOW), compile(gl, VS, FS_PLATE)]);
+  state.progs = { shadow, plate };
   const vao = gl.createVertexArray();
   gl.bindVertexArray(vao);
   const quad = gl.createBuffer();
@@ -312,7 +319,8 @@ function collect() {
     const m = /blur\(([\d.]+)px\)/.exec(cs.filter);
     const blur = m ? parseFloat(m[1]) : 0;
     const radius = parseFloat(cs.borderTopLeftRadius) || 28;
-    const mode = el.classList.contains('portrait') || el.dataset.fasteners === 'none' ? 0 : b.height < 120 ? 2 : 1;
+    // tiny flush screws on the cards only; none on the stint rows or the portrait (the photo covers its corners)
+    const mode = el.classList.contains('portrait') || el.classList.contains('stint') || el.dataset.fasteners === 'none' || b.height < 160 ? 0 : 1;
     const o = n * STRIDE;
     data.set([b.left, b.top, b.width, b.height, radius, op, (i * 0.6180339) % 1, mode, blur, 0, 0, 0], o);
     n++;
@@ -359,13 +367,15 @@ function frame(now) {
     gl.uniform1f(u.uPad, 2);
     gl.uniform1f(u.uDpr, state.dpr);
     gl.uniform1f(u.uTexel, state.dpr);
-    gl.uniform1f(u.uTexSize, state.big ? 2048 : 1024);
+    gl.uniform1f(u.uTexSize, 1024);
     gl.uniform1f(u.uCamZ, 1.6 * Math.max(state.w, state.h));
     gl.uniform1f(u.uGrain, 0.3);
+    gl.uniform1f(u.uKey, 1.0);
+    gl.uniform3f(u.uTint, 0.55, 0.555, 0.575);
     gl.uniform1f(u.uEnvI, 0.6);
-    gl.uniform1f(u.uExposure, 1.0);
-    gl.uniform1f(u.uCap, 0.032);   // linear luminance (+dither headroom): #98a2b3 text stays >= 4.5:1
-    gl.uniform3f(u.uPtr, state.ptr.x, -state.ptr.y, 2.0);
+    gl.uniform1f(u.uExposure, 1.8);
+    gl.uniform1f(u.uCap, 0.027);   // linear luminance (+dither headroom): #b7c0cc body text >= 7:1
+    gl.uniform3f(u.uPtr, state.ptr.x, -state.ptr.y, 0.22);
     let unit = 0;
     for (const [name, tex] of Object.entries(state.tex)) {
       gl.activeTexture(gl.TEXTURE0 + unit);
@@ -385,15 +395,29 @@ function request() {
 }
 
 // ------------------------------------------------------------------ boot
+// Nothing (no context, no texture fetch, no shader compile) until a plate is within about one
+// viewport of being visible.
+function whenNear() {
+  const plates = document.querySelectorAll('.plate');
+  if (!plates.length) return new Promise(() => {});
+  if (!('IntersectionObserver' in window)) return Promise.resolve();
+  return new Promise(resolve => {
+    const io = new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting)) { io.disconnect(); resolve(); }
+    }, { rootMargin: '100% 0px 100% 0px' });
+    plates.forEach(el => io.observe(el));
+  });
+}
+
 async function boot() {
+  await whenNear();
   if (!window.WebGL2RenderingContext || !window.createImageBitmap) return;
   const canvas = document.createElement('canvas');
   canvas.className = 'metal-canvas';
   canvas.setAttribute('aria-hidden', 'true');
   canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:2;display:block;';
   state.canvas = canvas;
-  state.big = !(small.matches || (navigator.deviceMemory && navigator.deviceMemory <= 4));
-  const s = state.big ? '2k' : '1k';
+  const s = '1k';   // fine bead-blast grain tiles well at 1k; the 2k set is no longer shipped
   try {
     const [normal, rough, albedo, env, envSoft, boltN, boltA] = await Promise.all([
       `brushed_normal_${s}.webp`, `brushed_rough_${s}.webp`, `brushed_albedo_${s}.webp`,
@@ -401,7 +425,7 @@ async function boot() {
     ].map(loadBitmap));
     state.bitmaps = { normal, rough, albedo, env, envSoft, boltN, boltA };
     document.body.appendChild(canvas);
-    initGL();
+    await initGL();
   } catch (err) {
     console.warn('[metal] WebGL metal disabled:', err);
     canvas.remove();
@@ -412,8 +436,8 @@ async function boot() {
   canvas.addEventListener('webglcontextlost', e => {
     e.preventDefault(); state.lost = true; root.classList.remove('metal-gl');
   });
-  canvas.addEventListener('webglcontextrestored', () => {
-    try { initGL(); state.lost = false; request(); } catch (err) { console.warn('[metal]', err); }
+  canvas.addEventListener('webglcontextrestored', async () => {
+    try { await initGL(); state.lost = false; request(); } catch (err) { console.warn('[metal]', err); }
   });
 
   const onPointer = e => {
