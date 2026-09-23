@@ -67,7 +67,7 @@ a:hover { color: var(--acc-glow); }
 
 /* ---------- shared type ---------- */
 .mono { font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
-.kicker { margin: 0; font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; color: var(--acc-glow); text-transform: uppercase; display: flex; align-items: center; gap: 12px; }
+.kicker { margin: 0; font-family: var(--mono); font-size: 12px; letter-spacing: 0.14em; color: #a6c8ff; text-transform: uppercase; display: flex; align-items: center; gap: 12px; }
 .kicker::before { content: ''; width: 28px; height: 2px; background: var(--acc); box-shadow: 0 0 12px var(--acc); }
 
 /* Chrome headline: fixed horizon reflection + a specular sweep that follows the pointer (--lxr). */
@@ -138,8 +138,8 @@ a:hover { color: var(--acc-glow); }
 .nav-brand { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 44px; justify-self: start; max-width: 100%; }
 .badge {
   display: inline-block; color: #fff;
-  background: linear-gradient(180deg, #4b90ff, var(--acc) 50%, var(--acc-deep));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.45), 0 0 18px -4px var(--acc);
+  background: linear-gradient(180deg, #2360d2, #1a52c2 50%, var(--acc-deep));
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.18), 0 0 18px -4px var(--acc);
   font-family: var(--display); font-style: var(--display-style); font-weight: 900; font-size: 15px;
   padding: 3px 12px; border-radius: 999px; letter-spacing: 0.04em;
 }
@@ -310,7 +310,7 @@ a:hover { color: var(--acc-glow); }
 .portrait-caption { display: flex; justify-content: space-between; gap: 12px; padding: 12px 8px 4px; letter-spacing: 0.12em; }
 .driver-body { display: grid; gap: clamp(32px,4vw,48px); }
 .quote { margin: 0; font-weight: 500; font-size: clamp(24px,2.6vw,38px); line-height: 1.22; text-wrap: pretty; color: var(--fg-hi); }
-.quote .q { color: var(--acc); font-family: var(--display); font-style: var(--display-style); font-weight: 900; }
+.quote .q { color: #cfe0ff; font-family: var(--display); font-style: var(--display-style); font-weight: 900; }
 .spec {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: 1px;
   background: var(--rule); border: 1px solid var(--rule);
@@ -387,7 +387,7 @@ a:hover { color: var(--acc-glow); }
 .club-list { list-style: none; margin: 0; display: flex; flex-wrap: wrap; gap: 10px 14px; padding-left: 6px; }
 .club {
   border: 1px solid rgba(190,210,240,0.18); padding: 9px 18px; font-weight: 600;
-  background: rgba(5,6,8,0.5);
+  background: rgba(5,6,8,0.9);
   transition: border-color 150ms, background 150ms;
 }
 .club:hover { border-color: var(--acc); background: rgba(43,123,255,0.08); }
@@ -405,7 +405,7 @@ a:hover { color: var(--acc-glow); }
 .btn-primary {
   position: relative; overflow: hidden;
   color: #fff; padding: 18px 34px;
-  background: linear-gradient(180deg, #3a7dea 0%, #1c5fd8 48%, var(--acc-deep) 100%);
+  background: linear-gradient(180deg, #2a66d6 0%, #1c56c8 48%, var(--acc-deep) 100%);
   text-shadow: 0 1px 1px rgba(0,0,0,0.35);
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), inset 0 -2px 6px rgba(0,0,0,0.35), 0 14px 30px -12px rgba(43,123,255,0.8);
   font-family: var(--display); font-style: var(--display-style); font-weight: 800;
@@ -565,3 +565,12 @@ main:focus { outline: none; }
   .section-title { font-size: clamp(34px, 10.5vw, 64px); --wide: 125; }
   .radio-title { --wide: 125; }
 }
+
+/* Small labels that sit directly on the smoke get a soft dark chip (a spread shadow, so no
+   layout change). Measured worst-case contrast with smoke passing behind: >= 7:1. */
+.kicker, .clubs > h3, .skills > h3, .skill .mono, .radio-cta > .mono, .hero-meta span {
+  width: fit-content; border-radius: 6px;
+  background: rgba(5,6,8,0.88); box-shadow: 0 0 0 5px rgba(5,6,8,0.88);
+}
+.kicker::before { box-shadow: 0 0 8px var(--acc); }
+.plate .kicker { background: none; box-shadow: none; }

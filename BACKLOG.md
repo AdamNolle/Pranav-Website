@@ -17,6 +17,9 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
 5. **Texture quality everywhere:** (2× DPR pass 2026-09-23: logos, type, metal and portrait are crisp; the car backdrop was beige and is now cool navy. Suspension members now use 28-segment profiles and the GLB stores normals at 11 bits, so the banding is gone.) no visible tiling, banding, aliasing, blur or stretching on the car, metal cards, smoke sprites, logos or portrait. Check each at 2× DPR.
 
 ## Done (2026-09-23)
+- **Contrast over the live smoke and metal:** measured by `scratchpad/contrast.py`. It hides the text, photographs the real backdrop over 3 frames at every scroll step, and compares each element's colour with the 97th-percentile backdrop.
+  - Fixes: darker badge and CTA gradients, light quote marks, opaque club pills, and dark chips under small labels on the smoke.
+  - Result: 588 samples, 0 failures; the worst is 5.48:1 on desktop and 5.50:1 on phone.
 - **PK Wide refinements:**
   - a proper wedge comma
   - an OpenType kern feature with about 40 pairs (AV/VA/TY/LT, punctuation after diagonals), verified in Brave (AVA 310 → 293 px)
@@ -40,4 +43,3 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
 ## Also open
 - LCP is still just over 2.5 s on throttled mobile, because the intro holds the name back. Consider painting the name immediately in a dimmed state.
 - Car textures: try KTX2/Basis once an encoder is installed (livery set is WebP at 4K wide).
-- Measure contrast by eye over the moving smoke and metal (axe can't measure over canvases).
