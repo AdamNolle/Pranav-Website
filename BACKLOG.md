@@ -47,4 +47,6 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
   - Phones get a light render path; `car.glb` is 1.08 MB.
 
 ## Also open
+- Car: proportions, fin, wing, halo and number placement now match 2024-25 references. Further realism needs a specific target (e.g. a named car and angle to match), not open-ended tweaks.
+- **Needs Adam's OK:** install a KTX2 encoder (`brew install ktx`) to cut car and metal texture weight.
 - Car textures: try KTX2/Basis once an encoder is installed (livery set is WebP at 4K wide).
