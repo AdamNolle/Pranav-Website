@@ -44,6 +44,14 @@
   let timers = [];
 
   function measure() {
+    // Fit the longest name line to the hero's content width (capped for very wide screens).
+    const cs = getComputedStyle(hero);
+    const avail = hero.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    nameEl.style.setProperty('--name-size', '100px');
+    const lineW = Math.max(...Array.from(nameEl.children, c => c.scrollWidth));
+    const size = Math.max(24, Math.min(innerWidth > 760 ? 168 : 120, avail / lineW * 100 * 0.985));
+    root.style.setProperty('--name-size', size.toFixed(1) + 'px');
+    nameEl.style.removeProperty('--name-size');
     hw = nameEl.offsetWidth;
     root.style.setProperty('--hw', hw + 'px');
     letters.forEach(l => l.style.setProperty('--ox', l.offsetLeft + 'px'));
@@ -258,6 +266,19 @@
     scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
     race();
   });
+
+  // ---------- staged GPU start-up ----------
+  // The three WebGL layers each compile shaders and upload textures; starting them together
+  // blocks the main thread for over a second on phones. Stage them after first paint, and
+  // leave the metal plates to the lightweight CSS finish on phones and touch devices.
+  const phone = matchMedia('(max-width: 760px), (pointer: coarse)').matches;
+  const idle = f => ('requestIdleCallback' in window ? requestIdleCallback(f, { timeout: 1500 }) : setTimeout(f, 200));
+  const load = src => import(src).catch(err => console.warn('[pk] optional layer failed:', src, err));
+  requestAnimationFrame(() => setTimeout(() => {
+    load('./car.js');
+    setTimeout(() => idle(() => load('./windtunnel.js')), phone ? 1400 : 500);
+    if (!phone) setTimeout(() => idle(() => load('./metal.js')), 1100);
+  }, 0));
 
   measure();
   buildRedline();
