@@ -644,8 +644,8 @@ def strut(name, p1, p2, chord, thick, m, flow=(1, 0, 0), taper=1.0):
     c.normalize()
     t = ax.cross(c)
     prof = []
-    for i in range(18):
-        a = 2 * math.pi * i / 18
+    for i in range(28):
+        a = 2 * math.pi * i / 28
         x = math.cos(a)
         # slightly drooped aerofoil: blunt leading edge, sharper trailing edge
         y = math.sin(a) * (0.5 + 0.5 * (1 + x) / 2) ** 0.5 if x < 0 else math.sin(a)
@@ -1803,7 +1803,7 @@ print('objects', len(col.objects), 'polys', stats)
 if DO_EXPORT:
     kw = dict(filepath=OUT, export_format='GLB', export_apply=True, export_yup=True,
               export_draco_mesh_compression_enable=True, export_draco_mesh_compression_level=6,
-              export_draco_position_quantization=13, export_draco_normal_quantization=9,
+              export_draco_position_quantization=13, export_draco_normal_quantization=11,
               export_draco_texcoord_quantization=14, export_image_format='WEBP', export_image_quality=88)
     bpy.ops.export_scene.gltf(**kw)
     print('Exported', OUT, os.path.getsize(OUT) // 1024, 'KB')

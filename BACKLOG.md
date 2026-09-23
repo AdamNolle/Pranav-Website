@@ -14,7 +14,7 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
    - Build it as a real font (fontTools/FontForge, or glyphs drawn in code) at `assets/fonts/pk-wide.woff2` with the A–Z, 0–9 and punctuation the site uses.
    - Wire it to `--display`. The official Formula1 fonts are licensed and couldn't be downloaded (bot check); `tools/install_f1_fonts.py` swaps them in if Adam provides the ZIP.
 4. **F1 car to near 1:1 with a real car:** keep iterating `blender/build_car.py` against reference photos and dimensions of a real 2024–25 car (Williams FW46 in blue and black is the best reference). Proportions first, then surfacing, then detail. Aim for a beautiful original livery with properly sized logos, and soft-plus-hard studio lighting.
-5. **Texture quality everywhere:** (2× DPR pass 2026-09-23: logos, type, metal and portrait are crisp; the car backdrop was beige and is now cool navy. Remaining: suspension rods look faceted up close.) no visible tiling, banding, aliasing, blur or stretching on the car, metal cards, smoke sprites, logos or portrait. Check each at 2× DPR.
+5. **Texture quality everywhere:** (2× DPR pass 2026-09-23: logos, type, metal and portrait are crisp; the car backdrop was beige and is now cool navy. Suspension members now use 28-segment profiles and the GLB stores normals at 11 bits, so the banding is gone.) no visible tiling, banding, aliasing, blur or stretching on the car, metal cards, smoke sprites, logos or portrait. Check each at 2× DPR.
 
 ## Done (2026-09-23)
 - **PK Wide refinements:**
