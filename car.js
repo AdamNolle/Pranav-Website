@@ -80,7 +80,7 @@ function studioEnvironment() {
   panel(26, 7, 1.1, 0xe8eeff, [0, 3, 14], softer);         // broad side fills: form in the shadow side
   panel(26, 7, 0.8, 0xe8eeff, [0, 3, -14], softer);
   panel(4, 12, 2.2, BLUE, [-15, 4, -8], softer);            // cool blue kicker
-  panel(8, 6, 1.1, 0xfff6ea, [14, 2.5, 3], softer);         // warm front fill, low
+  panel(8, 6, 1.1, 0xe6eeff, [14, 2.5, 3], softer);         // cool front fill, low (keeps the floor pool out of beige)
   const pm = new THREE.PMREMGenerator(renderer);
   const tex = pm.fromScene(s, 0.03, 0.1, 100, { size: PHONE ? 128 : 256 }).texture;
   pm.dispose();
@@ -116,7 +116,7 @@ const cove = (() => {
   const col = [], pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
     const y = pos.getY(i), k = Math.exp(-Math.max(0, y - 1.5) / 5) * 0.9 + 0.1;   // brighter near the horizon
-    col.push(0.05 * k, 0.055 * k, 0.07 * k);
+    col.push(0.04 * k, 0.05 * k, 0.075 * k);
   }
   geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   return new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, fog: true }));
@@ -127,7 +127,7 @@ scene.add(cove);
 // Desktop: glossy lacquer over a mirrored twin whose reflection blurs (roughness rises) and fades with depth.
 // Phones: no twin; the floor just carries the env reflection + baked shadow.
 const floorMat = new THREE.MeshPhysicalMaterial({
-  color: 0x07080a, roughness: 0.5, metalness: 0, clearcoat: 0.6, clearcoatRoughness: 0.18,
+  color: 0x04060c, roughness: 0.5, metalness: 0, clearcoat: 0.6, clearcoatRoughness: 0.18,
   transparent: !PHONE, opacity: PHONE ? 1 : 0.9,
 });
 if (!PHONE) {
