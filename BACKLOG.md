@@ -17,6 +17,7 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
 5. **Texture quality everywhere:** (2× DPR pass 2026-09-23: logos, type, metal and portrait are crisp; the car backdrop was beige and is now cool navy. Suspension members now use 28-segment profiles and the GLB stores normals at 11 bits, so the banding is gone.) no visible tiling, banding, aliasing, blur or stretching on the car, metal cards, smoke sprites, logos or portrait. Check each at 2× DPR.
 
 ## Done (2026-09-23)
+- **LCP:** a faint filled silhouette of the name (the slot the chrome letters fly into) paints at first frame and fades once they land. Throttled-mobile LCP is now about 0.7 s (was 2.3–2.6 s) across 5 runs; CLS 0.006.
 - **Car to 1:1, proportions:** checked against 2024–25 dimensions (length 5.57 m, width 2.02 m, 3.6 m wheelbase, 720 mm tyres, about 0.96 m height; all within regulation).
   - The front wing was 0.57 m tall at the tips against a real 0.33–0.35 m. It's re-proportioned to 0.25 m in the centre and 0.35 m at the tips.
   - Side view: the fin used to stand up to 19 cm proud of the engine cover at the rear, reading as a flat panel. It's now a slim 2024-style fin that tracks the cover (7 cm proud, tapering to 3 cm), with the PK and number moved onto it.
@@ -46,5 +47,4 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
   - Phones get a light render path; `car.glb` is 1.08 MB.
 
 ## Also open
-- LCP is still just over 2.5 s on throttled mobile, because the intro holds the name back. Consider painting the name immediately in a dimmed state.
 - Car textures: try KTX2/Basis once an encoder is installed (livery set is WebP at 4K wide).

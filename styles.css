@@ -574,3 +574,13 @@ main:focus { outline: none; }
 }
 .kicker::before { box-shadow: 0 0 8px var(--acc); }
 .plate .kicker { background: none; box-shadow: none; }
+
+/* Name outline shown before lights out (see main.js). Same metrics as the name, so letters land in it. */
+.hero-name { position: relative; }
+.name-ghost {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  color: rgba(120,160,230,0.13); font-kerning: none;   /* per-letter spans aren't kerned either */
+  filter: none; transition: opacity 400ms ease;
+}
+.hero-name[data-landed] .name-ghost { opacity: 0; }
+.name-ghost > div { white-space: nowrap; }

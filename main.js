@@ -16,6 +16,18 @@
     }
   });
 
+  // Outline "grid slot" of the name, painted from the first frame; the chrome letters fly into it.
+  // It is also the page's first large paint, so LCP no longer waits for the start-light intro.
+  const ghost = document.createElement('div');
+  ghost.className = 'name-ghost';
+  ghost.setAttribute('aria-hidden', 'true');
+  q('[data-word]').forEach(w => {
+    const line = document.createElement('div');
+    line.textContent = w.dataset.word;
+    ghost.appendChild(line);
+  });
+  root.querySelector('[data-name]').appendChild(ghost);
+
   const letters = q('[data-l]');
   const nameEl = root.querySelector('[data-name]');
   const hero = root.querySelector('[data-hero]');
@@ -101,6 +113,7 @@
     timers.forEach(clearTimeout); timers = [];
     letters.forEach(l => l.getAnimations().forEach(a => a.cancel()));
     root.style.setProperty('--nameo', '0'); root.style.setProperty('--heroo', '0');
+    nameEl.removeAttribute('data-landed');
     const pods = [0, 1, 2, 3, 4].map(i => q(`[data-pod="${i}"]`));
     const label = root.querySelector('[data-lights-label]');
     const off = () => pods.flat().forEach(el => { el.style.background = '#2a0a08'; el.style.boxShadow = 'none'; });
@@ -108,7 +121,7 @@
     label.textContent = 'LIGHTS';
     document.documentElement.dataset.race = 'reset';
     dispatchEvent(new Event('race:reset'));
-    if (reduce) { root.style.setProperty('--nameo', '1'); root.style.setProperty('--heroo', '1'); return; }
+    if (reduce) { root.style.setProperty('--nameo', '1'); root.style.setProperty('--heroo', '1'); nameEl.setAttribute('data-landed', ''); return; }
     if (!CONFIG.startLights) { timers.push(setTimeout(fly, 150)); return; }
     pods.forEach((p, i) => timers.push(setTimeout(() => {
       p.forEach(el => { el.style.background = '#ff2415'; el.style.boxShadow = '0 0 18px 4px rgba(255,36,21,0.6), inset 0 -3px 6px rgba(0,0,0,0.35)'; });
@@ -151,6 +164,7 @@
     const end = (letters.length - 1) * step + dur;
     timers.push(setTimeout(() => {
       root.style.setProperty('--heroo', '1');
+      nameEl.setAttribute('data-landed', '');
       const st = root.querySelector('[data-stripe]');
       st.animate([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 320, easing: 'cubic-bezier(.16,1,.3,1)' });
       q('[data-heroin]').forEach((el, i) => el.animate([
