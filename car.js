@@ -43,12 +43,15 @@ const ready = () => { if (!readySent) { readySent = true; dispatchEvent(new Even
 
 let renderer;
 try {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: !PHONE || devicePixelRatio < 2, powerPreference: 'high-performance' });
+  renderer = new THREE.WebGLRenderer({ canvas, alpha: !new URLSearchParams(location.search).has('opaque'), antialias: !PHONE || devicePixelRatio < 2, powerPreference: 'high-performance' });
 } catch (e) {
   canvas.remove();
   throw e;
 }
-const DPR = () => Math.min(devicePixelRatio, +new URLSearchParams(location.search).get('dpr') || (PHONE ? 1.25 : 2));
+// Pixel ratio: fixed by ?dpr=, otherwise the adaptive cap below (starts at full quality).
+const DPR_FIXED = +new URLSearchParams(location.search).get('dpr') || 0;
+let dprCap = PHONE ? 1.25 : 2;
+const DPR = () => Math.min(devicePixelRatio, DPR_FIXED || dprCap);
 renderer.setPixelRatio(DPR());
 renderer.toneMapping = THREE.NeutralToneMapping;          // photographic roll-off, keeps the blues honest
 renderer.toneMappingExposure = 1.3;
@@ -201,7 +204,28 @@ if (!PHONE && !DBG.has('nobloom')) {
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
 }
-const draw = () => (composer ? composer.render() : renderer.render(scene, camera));
+// Feather into the page at top and bottom: multiply the finished frame (colour and alpha) by a vertical
+// ramp, 0 -> 1 over the top 14%, 1 -> 0 over the bottom 28%. A CSS mask-image on the canvas looked the
+// same but made the browser push the live canvas through a full-resolution offscreen pass every frame
+// (~10 ms per frame on a retina desktop: the site's single largest GPU cost). This quad is ~0.1 ms.
+const fadeScene = new THREE.Scene(), fadeCam = new THREE.Camera();
+const fadeQuad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.ShaderMaterial({
+  vertexShader: 'varying float vY; void main(){ vY = 1. - uv.y; gl_Position = vec4(position.xy, 0., 1.); }',
+  fragmentShader: 'varying float vY; void main(){ gl_FragColor = vec4(clamp(min(vY / .14, (1. - vY) / .28), 0., 1.)); }',
+  blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
+  blendSrc: THREE.ZeroFactor, blendDst: THREE.SrcAlphaFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.SrcAlphaFactor,
+  depthTest: false, depthWrite: false, toneMapped: false,
+}));
+fadeQuad.frustumCulled = false;
+fadeScene.add(fadeQuad);
+const draw = () => {
+  if (composer) composer.render(); else renderer.render(scene, camera);
+  const ac = renderer.autoClear;
+  renderer.autoClear = false;
+  renderer.setRenderTarget(null);
+  renderer.render(fadeScene, fadeCam);
+  renderer.autoClear = ac;
+};
 if (DBG.has('gpu')) window.__car = { renderer, scene, camera, draw, get composer() { return composer; } };
 
 // ---------- car rig ----------
@@ -394,7 +418,7 @@ const DRIVE_IN = 1300, START_X = 17, KEY_FULL = 90;
 const state = { phase: 'waiting', t0: 0, x: START_X, v: 0, lights: 0 };
 if (document.documentElement.dataset.race === 'go') state.phase = 'parked';
 const ptr = { x: 0.5, y: 0.5, active: false };
-let yaw = 0, envYaw = 0, pitch = 0, gustKick = 0, beltOffset = 0, wheelSpin = 0, idleClock = 0;
+let yaw = 0, envYaw = 0, pitch = 0, gustKick = 0, wheelSpin = 0, idleClock = 0;
 
 function park() { state.phase = 'parked'; state.x = 0; state.v = 0; key.intensity = KEY_FULL; }
 if (paused || state.phase === 'parked') park();
@@ -445,6 +469,26 @@ function frame() {
 }
 new ResizeObserver(frame).observe(hero);
 frame();
+
+// ---------- adaptive resolution: hold the display's refresh rate ----------
+// The car is fill-rate bound (a 2x retina frame is ~5 MP of physically based car and floor shading,
+// the floor reflection and bloom). If frames run over the display's budget (8.3 ms at 120 Hz) for a
+// sustained second while the car is parked, the pixel ratio steps down 0.25, to no lower than 1. It
+// never steps back up during the visit, so quality can't oscillate. A 60 Hz screen keeps full quality.
+const gov = { ema: 1 / 60, vsync: 1 / 60, over: 0, since: 0 };
+function governResolution(now, dt) {
+  if (DPR_FIXED || !dt) return;
+  gov.since ||= now;
+  gov.vsync = Math.min(gov.vsync * 1.001, Math.max(1 / 360, dt));   // shortest recent frame = the display's
+  gov.ema += (dt - gov.ema) * 0.08;
+  if (now - gov.since < 2000) return;                                // let the landing settle first
+  gov.over = gov.ema > gov.vsync * 1.25 ? gov.over + 1 : Math.max(0, gov.over - 2);
+  if (gov.over > 1 / gov.vsync && dprCap > 1) {                      // a sustained second over budget
+    dprCap = Math.max(1, dprCap - 0.25);
+    gov.over = 0; gov.since = now;
+    frame();
+  }
+}
 
 // ---------- screen-space bounds + silhouette mask ----------
 const tmpV = new THREE.Vector3();
@@ -552,6 +596,7 @@ function tick(now) {
   requestAnimationFrame(tick);
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (!visible || !loaded) { window.__carBounds = null; window.__carMask = null; if (loaded) ready(); return; }
+  if (state.phase === 'parked') governResolution(now, dt);       // the drive-in itself is never judged
   if (!paused) idleClock += dt;
 
   // Drive-in: hard deceleration from off-screen, nose dives under braking.
@@ -570,11 +615,11 @@ function tick(now) {
 
   // Wind tunnel: rolling road + wheels at belt speed, aero squat, vibration, gusts.
   const flow = paused ? { speed: 0, gust: 0 } : windFlow();
-  const beltV = flow.speed * 22;
-  beltOffset = (beltOffset + (paused ? 0 : beltV * dt / 8)) % 1;
-  belt.material.map.offset.y = -beltOffset * 3;
+
   belt.material.opacity = 0.22 + 0.3 * flow.speed;
-  wheelSpin -= paused ? 0 : Math.min(45, (state.v + beltV) / 0.36) * dt;
+  // Wheels turn only while the car is rolling (the drive-in) and rest once it has braked; the rolling
+  // road stays still too, so the parked car never looks like it is sliding.
+  wheelSpin -= paused ? 0 : Math.min(45, state.v / 0.36) * dt;
   wheels.forEach(w => { w.rotation.z = wheelSpin; });
 
   gustKick = paused ? 0 : gustKick * Math.exp(-dt / 0.5);

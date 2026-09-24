@@ -502,7 +502,8 @@ const FS_RENDER = FSH + `
 uniform sampler2D uDye, uGlow, uVel, uMask, uUV, uWisp;
 uniform vec2 uDyeRes, uGlowRes, uView;
 uniform vec4 uCarRect;
-uniform float uFreeMag, uTime, uLaserY, uLaserW, uGain, uDim, uPhase, uWispK, uHasWisp, uDebug;
+uniform float uFreeMag, uTime, uLaserY, uLaserW, uGain, uDim, uPhase, uWispK, uHasWisp, uDebug, uLeadS, uShiftR;
+uniform vec2 uInvView;
 vec4 bspline(sampler2D t, vec2 uv, vec2 res){
   vec2 s = uv * res - .5, i = floor(s), f = s - i, f2 = f * f, f3 = f2 * f;
   vec2 w0 = (1. - 3.*f + 3.*f2 - f3) / 6., w1 = (4. - 6.*f2 + 3.*f3) / 6., w2 = (1. + 3.*f + 3.*f2 - 3.*f3) / 6., w3 = f3 / 6.;
@@ -513,14 +514,18 @@ vec4 bspline(sampler2D t, vec2 uv, vec2 res){
 float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 void main(){
   vec2 px = vec2(vUv.x, 1. - vUv.y) * uView;
-  vec4 m = texture(uMask, vUv);
+  // Fields are as of the last solver step: undo the scroll since then, and carry the smoke along the
+  // flow by the time since then (one semi-Lagrangian lookup), so every display frame moves.
+  vec2 uvS = vUv - vec2(0., uShiftR);
+  vec2 uvR = uvS - texture(uVel, uvS).xy * uLeadS * uInvView;
+  vec4 m = texture(uMask, uvS);
   if (uDebug > .5){ o = vec4(m.x < 0. ? .5 : 0., m.y * .3, 0., .5); return; }
-  vec2 d = bspline(uDye, vUv, uDyeRes).xy * uGain;
-  vec2 g = bspline(uGlow, vUv, uGlowRes).xy * uGain;
+  vec2 d = bspline(uDye, uvR, uDyeRes).xy * uGain;
+  vec2 g = bspline(uGlow, uvR, uGlowRes).xy * uGain;
   // wisp detail from the Cycles sheet, carried by the flow (two crossfaded phases)
   float wd = 1.;
   if (uHasWisp > .5){
-    vec4 c = texture(uUV, vUv);
+    vec4 c = texture(uUV, uvR);
     float wa = abs(1. - 2. * uPhase), wb = 1. - wa;
     float sa = texture(uWisp, c.xy * vec2(.55, 1.)).a, sb = texture(uWisp, c.zw * vec2(.55, 1.) + .37).a;
     float w = (wa * sa + wb * sb - .5) / sqrt(wa * wa + wb * wb) + .5;
@@ -528,7 +533,7 @@ void main(){
     wd = mix(1., clamp(.35 + 1.25 * w, 0., 1.6), k);
   }
   d *= wd; g *= mix(1., wd, .5);
-  float spd = length(texture(uVel, vUv).xy) / max(uFreeMag, 1e-3);
+  float spd = length(texture(uVel, uvS).xy) / max(uFreeMag, 1e-3);
   float comp = clamp(spd, .2, 2.2);
   float laser = exp(-pow((px.y - uLaserY) / uLaserW, 2.));
   vec3 grey = vec3(.78, .85, .95), blue = vec3(.169, .482, 1.);
@@ -588,12 +593,13 @@ const VS_PDRAW = HDR + `
 layout(location = 0) in vec4 aS;
 uniform sampler2D uVel, uMask;
 uniform vec2 uView;
-uniform float uStreak, uDpr, uLaserY, uLaserW, uAlpha, uDim, uLifeMin, uLifeMax, uSize;
+uniform float uStreak, uDpr, uLaserY, uLaserW, uAlpha, uDim, uLifeMin, uLifeMax, uSize, uLead, uDyR;
 out vec2 vT; out float vA; out vec3 vC; out float vK; out float vLen;
 void main(){
   vec2 p = aS.xy; float seed = aS.w;
   vec2 uv = vec2(p.x / uView.x, 1. - p.y / uView.y);
   vec2 v = textureLod(uVel, clamp(uv, 0., 1.), 0.).xy; vec2 vc = vec2(v.x, -v.y) * 100.;
+  p += vc * uLead - vec2(0., uDyR);             // drawn where it is now, not where the last step left it
   float sp = length(vc); vec2 dir = sp > 1e-3 ? vc / sp : vec2(1., 0.);
   float kind = fract(seed * 5.17);
   float k = kind < .72 ? 0. : kind < .88 ? 1. : kind < .96 ? 2. : 0.;
@@ -634,12 +640,13 @@ const VS_PUFF = HDR + `
 layout(location = 0) in vec4 aS;
 uniform sampler2D uVel, uMask;
 uniform vec2 uView;
-uniform float uAlpha, uDim, uLifeMin, uLifeMax, uSize, uGrow, uTime;
+uniform float uAlpha, uDim, uLifeMin, uLifeMax, uSize, uGrow, uTime, uLead, uDyR;
 out vec2 vT; out float vA; out float vF; out float vBlue;
 void main(){
   vec2 p = aS.xy; float seed = aS.w, age = aS.z;
   vec2 uv = vec2(p.x / uView.x, 1. - p.y / uView.y);
   vec2 v = textureLod(uVel, clamp(uv, 0., 1.), 0.).xy; vec2 vc = vec2(v.x, -v.y);
+  p += vc * (100. * uLead) - vec2(0., uDyR);
   float sp = length(vc);
   float ang = atan(vc.y, vc.x) + (fract(seed * 4.7) - .5) * .8 + age * (fract(seed * 8.3) - .5) * .9;
   float life = mix(uLifeMin, uLifeMax, fract(seed * 7.31));
@@ -987,7 +994,8 @@ function step(dt, dy) {
 }
 
 // ---------- render ----------
-function render() {
+// lead: seconds since the last solver step; rdy: CSS px scrolled since it (see frame()).
+function render(lead = 0, rdy = 0) {
   const d = dims, W = d.W, H = d.H;
   const laserY = H * (0.5 + 0.36 * Math.sin(st.time * 0.09)), laserW = H * 0.085;
   gl.bindVertexArray(R.vao);
@@ -1000,7 +1008,8 @@ function render() {
     .t('uWisp', wisp || S.glow.tex)
     .f('uDyeRes', d.dw, d.dh).f('uGlowRes', S.glow.w, S.glow.h).f('uView', W, H).f('uFreeMag', freeStream())
     .f('uTime', st.time).f('uLaserY', laserY).f('uLaserW', laserW).f('uGain', 0.85).f('uDim', 0.08)
-    .f('uCarRect', ...carRect()).f('uPhase', S.phase || 0).f('uWispK', 0.5).f('uHasWisp', wisp ? 1 : 0).f('uDebug', api.debug ? 1 : 0);
+    .f('uCarRect', ...carRect()).f('uPhase', S.phase || 0).f('uWispK', 0.5).f('uHasWisp', wisp ? 1 : 0).f('uDebug', api.debug ? 1 : 0)
+    .f('uLeadS', lead * VU).f('uInvView', 1 / W, 1 / H).f('uShiftR', rdy / H);
   draw(null);
   if (api.debug) return;
 
@@ -1010,7 +1019,8 @@ function render() {
     gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     const puff = (pl, alpha, size, grow) => {
       R.puff.use().t('uVel', S.vel.read.tex).t('uMask', S.mask.tex).t('uAtlas', TEX.atlas).f('uView', W, H)
-        .f('uAlpha', alpha).f('uDim', 0.08).f('uLifeMin', pl.lifeMin).f('uLifeMax', pl.lifeMax).f('uSize', size).f('uGrow', grow).f('uTime', st.time);
+        .f('uAlpha', alpha).f('uDim', 0.08).f('uLifeMin', pl.lifeMin).f('uLifeMax', pl.lifeMax).f('uSize', size).f('uGrow', grow).f('uTime', st.time)
+        .f('uLead', lead).f('uDyR', rdy);
       gl.bindVertexArray(pl.a.drw);
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, pl.draw);
     };
@@ -1022,7 +1032,7 @@ function render() {
     gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
     R.pdraw.use().t('uVel', S.vel.read.tex).t('uMask', S.mask.tex).t('uMotes', TEX.motes).f('uView', W, H)
       .f('uStreak', 0.022).f('uDpr', d.dpr).f('uLaserY', laserY).f('uLaserW', laserW).f('uAlpha', 0.85).f('uDim', 0.1)
-      .f('uLifeMin', S.parts.lifeMin).f('uLifeMax', S.parts.lifeMax).f('uSize', 1);
+      .f('uLifeMin', S.parts.lifeMin).f('uLifeMax', S.parts.lifeMax).f('uSize', 1).f('uLead', lead).f('uDyR', rdy);
     gl.bindVertexArray(S.parts.a.drw);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, S.parts.draw);
   }
@@ -1031,7 +1041,7 @@ function render() {
 }
 
 // ---------- frame loop ----------
-let last = 0, lastRender = 0, slow = 0, shown = false;
+let last = 0, slow = 0, shown = false;
 function readInputs(dt) {
   const target = +window.__speed || 0;
   st.speed += (Math.max(0, Math.min(350, target)) - st.speed) * Math.min(1, dt * 3);
@@ -1053,31 +1063,34 @@ function readInputs(dt) {
 }
 function frame(now) {
   raf = requestAnimationFrame(frame);
-  if (now - lastRender < 12) return;          // cap at ~60 Hz on high-refresh screens
-  // Fixed-timestep solver: the fluid always advances in exact 1/60 s steps and frame-time
-  // wobble is absorbed by the accumulator, so jittery frames no longer shake the smoke.
+  // Fixed-timestep solver: the fluid always advances in exact 1/60 s steps and frame-time wobble is
+  // absorbed by the accumulator, so jittery frames never shake the smoke. Drawing happens on every
+  // display frame (120 Hz and up included): between steps the smoke and particles are drawn carried
+  // along the flow by the time since the last step, and the page's scroll since then is applied at
+  // draw time. Motion is continuous at any refresh rate for the solver cost of 60 Hz.
   const real = Math.min(0.1, Math.max(0, (now - (last || now - FIXED * 1000)) / 1000));
-  last = now; lastRender = now;
+  last = now;
+  vsync = Math.min(vsync * 1.001, Math.max(1 / 360, real || vsync));   // shortest recent frame = the display's
   acc = Math.min(acc + real, FIXED * 3);
   const y = scrollY;
   let dy = y - st.scroll;
-  st.scrollPrev = st.scroll; st.scroll = y;
-  if (Math.abs(dy) > dims.H * 0.9) { dy = 0; st.scrollPrev = y; prefill(); }
+  if (Math.abs(dy) > dims.H * 0.9) { dy = 0; st.scrollPrev = st.scroll = y; prefill(); }
   readInputs(real);
-  const n = Math.max(1, Math.min(2, Math.floor(acc / FIXED)));
-  acc = Math.max(0, acc - n * FIXED);
+  const n = Math.min(2, Math.floor(acc / FIXED));
+  acc -= n * FIXED;
+  if (n) { st.scrollPrev = st.scroll; st.scroll = y; }
   for (let i = 0; i < n; i++) {
     st.time += FIXED; st.frame++;
-    step(FIXED, i === 0 ? dy : 0);              // scroll re-projection applied once per frame
+    step(FIXED, i === 0 ? dy : 0);              // scroll re-projection applied once per step batch
   }
   const dt = real;
   const base = Math.max(1.1, Math.min(2.6, dims.W / 600));
   window.__windFlow = { speed: Math.min(1, freeStream() / (base * 4)), gust: Math.min(1, st.gust) };
-  render();
+  render(Math.min(acc, FIXED), n ? 0 : dy);
   if (!shown) { shown = true; canvas.style.opacity = '1'; ready(); }
-  // adaptive quality: shed pressure iterations and particle draws if frames run long
+  // adaptive quality: shed pressure iterations and particle draws if frames run long for this display
   frameEma += (dt - frameEma) * 0.1;
-  slow = frameEma > 0.022 ? slow + 1 : Math.max(0, slow - 2);
+  slow = frameEma > vsync * 1.35 ? slow + 1 : Math.max(0, slow - 2);
   if (slow > 90) {
     slow = 0;
     if (S.iters > 10) S.iters -= 4;
@@ -1085,7 +1098,7 @@ function frame(now) {
   }
 }
 const FIXED = 1 / 60;
-let acc = 0, frameEma = 1 / 60;
+let acc = 0, frameEma = 1 / 60, vsync = 1 / 60;
 function start() { if (!raf && alive && glOK && !frozen && !document.hidden) { last = 0; acc = FIXED; raf = requestAnimationFrame(frame); } }
 function stop() { cancelAnimationFrame(raf); raf = 0; }
 

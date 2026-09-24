@@ -104,6 +104,12 @@ How:
 - Shaders compile in parallel off the main thread (`KHR_parallel_shader_compile` / `compileAsync`), and one warm-up frame covers the shadow and post-processing programs.
 - Building the car and uploading its textures yield between steps, so none of it becomes one long frame.
 
+It also runs at the display's full refresh rate, including 120 Hz ProMotion screens:
+- **Smoke and particles** draw on every display frame. The fluid still steps 60 times a second; between steps each frame is carried along the flow, so motion is continuous at any refresh rate for 60 Hz solver cost.
+- **The chrome highlight on the name** moves a masked copy of the name by opposite transforms, so the page never repaints. Repainting the gradient letters every frame had cost up to 0.5 s GPU stalls.
+- **The car's edge fade into the page** is drawn in WebGL. A CSS mask on a live canvas forces an offscreen composite every frame.
+- **The car's resolution adapts:** full 2× quality while frames fit the display's budget, stepping down (never below 1×) if they don't. A 60 Hz display keeps full quality.
+
 ## Run it locally
 
 ```bash

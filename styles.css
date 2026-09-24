@@ -228,12 +228,11 @@ a:hover { color: var(--acc-glow); }
   padding: 120px var(--pad-x) clamp(28px,6vh,64px);
   overflow: hidden;
 }
-/* 3D studio: fades in once the car has loaded, feathered into the page at top and bottom. */
+/* 3D studio: fades in once the car has loaded. Its top/bottom feather into the page is drawn in WebGL
+   by car.js; a CSS mask here cost ~10 ms of GPU compositing per frame on a retina screen. */
 .car-canvas {
   position: absolute; inset: 0; width: 100%; height: 100%; display: block; z-index: 0;
   opacity: 0; transition: opacity 900ms ease;
-  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 72%, transparent 100%);
-  mask-image: linear-gradient(180deg, transparent 0, #000 14%, #000 72%, transparent 100%);
 }
 .car-canvas.ready { opacity: 1; }
 .streaks { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 2; }
@@ -277,13 +276,24 @@ a:hover { color: var(--acc-glow); }
   padding: 0.06em 0.12em 0.05em 0.02em; margin: -0.06em -0.12em -0.05em -0.02em;
   transform-origin: 0% 60%;
 }
-/* Each letter offsets the shared sweep by its own x (--ox) so the highlight crosses the whole name. */
+/* Static chrome per letter; the moving highlight is the .name-glint layer below (painted once). */
 .hero-name.chrome span {
-  background-image: var(--sweep), var(--chrome);
-  background-size: calc(var(--hw, 1000px) * 2) 100%, 100% 100%;
-  background-position: calc(var(--lxp, 500px) - var(--ox, 0px) - var(--hw, 1000px)) 0, 0 0;
+  background-image: var(--chrome);
+  background-size: 100% 100%;
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
+/* Specular sweep over the name (main.js): a white copy of the name seen through a soft tilted band.
+   Band and copy move by opposite transforms, so the highlight travels with no repaint. Same band as
+   --sweep: 55% -> 95% -> 55% white across 48% of the name's width. */
+.name-glint { position: absolute; inset: 0; z-index: 1; pointer-events: none; visibility: hidden; }
+.hero-name[data-landed] .name-glint { visibility: visible; }
+.name-glint-win {
+  position: absolute; left: 0; top: -0.2em; bottom: -0.2em; overflow: hidden; will-change: transform;
+  -webkit-mask-image: linear-gradient(100deg, transparent 12.5%, rgba(0,0,0,0.58) 40.6%, #000 50%, rgba(0,0,0,0.58) 59.4%, transparent 87.5%);
+  mask-image: linear-gradient(100deg, transparent 12.5%, rgba(0,0,0,0.58) 40.6%, #000 50%, rgba(0,0,0,0.58) 59.4%, transparent 87.5%);
+}
+.name-glint-txt { position: absolute; left: 0; top: 0.2em; color: rgba(255,255,255,0.95); font-kerning: none; will-change: transform; }
+.name-glint-txt > div { white-space: nowrap; }
 
 .stripe {
   position: relative; z-index: 3; height: 4px; width: min(620px,58%);
@@ -552,7 +562,7 @@ main:focus { outline: none; }
 /* Windows High Contrast / forced colours: drop clipped-gradient text and decorative layers. */
 @media (forced-colors: active) {
   .chrome-text, .hero-name.chrome span { background: none !important; color: CanvasText !important; -webkit-text-fill-color: CanvasText; }
-  .car-canvas, .wind-tunnel, .metal-canvas, .streaks, .page::before { display: none !important; }
+  .car-canvas, .wind-tunnel, .metal-canvas, .streaks, .page::before, .name-glint { display: none !important; }
   .plate, .spec, .club, .btn-primary { border: 1px solid CanvasText; }
 }
 

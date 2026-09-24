@@ -17,6 +17,12 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
 5. **Texture quality everywhere:** (2× DPR pass 2026-09-23: logos, type, metal and portrait are crisp; the car backdrop was beige and is now cool navy. Suspension members now use 28-segment profiles and the GLB stores normals at 11 bits, so the banding is gone.) no visible tiling, banding, aliasing, blur or stretching on the car, metal cards, smoke sprites, logos or portrait. Check each at 2× DPR.
 
 ## Done (2026-09-24)
+- **Refresh-rate smoothness (120 Hz target):**
+  - The smoke used to skip every other frame on high-refresh screens. Now it renders every frame with flow extrapolation between its fixed 60 Hz steps, and its quality governor keys off the detected refresh rate.
+  - Found by tracing: the idle chrome sweep repainted the name's gradient letters every frame, causing 0.5 s GPU raster stalls on desktop. It's now a compositor-only glint layer, and section titles sweep only with a real pointer.
+  - The car canvas's CSS mask was replaced by an in-WebGL feather; adaptive car resolution (a 2× → 1× ratchet) holds the budget.
+  - A/B on the same machine and load: old build 26–28 fps vs new 41–44 fps (desktop 2×, headless at 60 Hz, GPU shared with other apps). The phone viewport renders at 450+ fps uncapped.
+  - The parked car's wheels and the rolling road no longer spin; the wheels still turn during the drive-in.
 - **First-load smoothness on slow devices** (profiled with DevTools traces at 4× CPU, fast network and slow 4G, phone and laptop):
   - The start lights hold until the car and the smoke are ready (capped at 2.6 s), so the intro runs on an idle main thread.
   - The job title shows from the first paint.

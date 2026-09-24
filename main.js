@@ -28,6 +28,17 @@
   });
   root.querySelector('[data-name]').appendChild(ghost);
 
+  // Specular sweep over the name, compositor-only: a white copy of the name seen through a soft band
+  // (the window). The window slides by x and the copy inside it by -x, so the white text stays on the
+  // letters while the band travels. Only transforms change per frame, so the name never repaints
+  // (repainting its gradient-clipped letters every frame cost up to half a second of GPU raster).
+  const glintBox = document.createElement('div'), glintWin = document.createElement('div');
+  const glintTxt = ghost.cloneNode(true);
+  glintBox.className = 'name-glint'; glintWin.className = 'name-glint-win'; glintTxt.className = 'name-glint-txt';
+  glintBox.setAttribute('aria-hidden', 'true');
+  glintWin.appendChild(glintTxt); glintBox.appendChild(glintWin);
+  root.querySelector('[data-name]').appendChild(glintBox);
+
   const letters = q('[data-l]');
   const nameEl = root.querySelector('[data-name]');
   const hero = root.querySelector('[data-hero]');
@@ -51,7 +62,8 @@
   const gearEl = root.querySelector('[data-hud="gear"]');
   const plates = q('[data-metal]');
   const ptr = { x: 0.5, y: 0.5, cx: -9999, cy: -9999, t: 0 };
-  let lx = 0.5, v = 0, boost = 0, hw = 1000, glint = null;
+  const FINE = matchMedia('(pointer: fine)').matches;
+  let lx = 0.5, lt = 0.5, v = 0, boost = 0, hw = 1000, gw = 400, lastGx = NaN, glint = null;
   let lastY = scrollY, lastT = performance.now(), lastKmh = -1, lastLit = -1;
   let timers = [];
 
@@ -75,14 +87,15 @@
     const cs = getComputedStyle(hero);
     const avail = hero.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
     nameEl.style.setProperty('--name-size', '100px');
-    const lineW = Math.max(...Array.from(nameEl.children, c => c.scrollWidth));
+    const lineW = Math.max(...q('[data-word]').map(c => c.scrollWidth));   // the two name lines only
     const size = Math.max(24, Math.min(innerWidth > 760 ? 168 : 120, avail / lineW * 100 * 0.985));
     root.style.setProperty('--name-size', size.toFixed(1) + 'px');
     nameEl.style.removeProperty('--name-size');
     hw = nameEl.offsetWidth;
-    nameEl.style.setProperty('--hw', hw + 'px');
-    const xs = letters.map(l => l.offsetLeft);           // read all, then write: one layout, not sixteen
-    letters.forEach((l, i) => l.style.setProperty('--ox', xs[i] + 'px'));
+    gw = Math.round(hw * 0.64);                           // band is 48% of the name wide, plus room for its tilt
+    glintWin.style.width = gw + 'px';
+    glintTxt.style.width = hw + 'px';
+    lastGx = NaN;
   }
 
   // Moves each metal plate's highlight toward the pointer; on touch it drifts on its own.
@@ -254,20 +267,27 @@
       const p = (t - glint) / 850;
       if (p >= 1) glint = null; else { target = -0.25 + p * 1.5; lx = target; }
     }
+    const pointing = ptr.t !== 0 && t - ptr.t <= 2600;
     if (target == null) {
-      const idle = ptr.t === 0 || t - ptr.t > 2600;
       const still = reduce || document.documentElement.dataset.motion === 'paused';
-      target = idle ? (still ? 0.5 : 0.5 + 0.42 * Math.sin(t / 1600)) : ptr.x;
+      target = pointing ? ptr.x : (still ? 0.5 : 0.5 + 0.42 * Math.sin(t / 1600));
       target += Math.sin(y / 600) * 0.12;
       lx += (target - lx) * 0.14;
     }
-    // Chrome sweep: write only to on-screen chrome elements, and only when the value visibly moves.
-    // (Writing to the page root restyled the whole document every frame.)
-    const lxr = Math.max(0, Math.min(1, 1 - lx));
-    if (Math.abs(lxr - lastLxr) > 0.0015) {
+    // Name glint: two transforms, no repaint.
+    const gx = Math.round((lx * hw - gw / 2) * 2) / 2;
+    if (nameOnScreen && gx !== lastGx) {
+      lastGx = gx;
+      glintWin.style.transform = `translate3d(${gx}px,0,0)`;
+      glintTxt.style.transform = `translate3d(${-gx}px,0,0)`;
+    }
+    // Section titles keep a paint-based sweep, so it moves only with a real pointer (never on idle or
+    // scroll, when a repaint per frame would cost smoothness) and only while it visibly changes.
+    lt += ((FINE && pointing ? ptr.x : 0.5) - lt) * 0.14;
+    const lxr = Math.max(0, Math.min(1, 1 - lt));
+    if (chromeOnScreen.size && Math.abs(lxr - lastLxr) > 0.0015) {
       lastLxr = lxr;
       const v = lxr.toFixed(4);
-      if (nameOnScreen) nameEl.style.setProperty('--lxp', (lx * hw).toFixed(1) + 'px');
       chromeOnScreen.forEach(el => el.style.setProperty('--lxr', v));
     }
     // CSS plate highlight only matters when metal.js isn't drawing the plates.
