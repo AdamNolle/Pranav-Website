@@ -204,7 +204,7 @@ void main() {
 // ------------------------------------------------------------------ state
 const state = {
   gl: null, canvas: null, progs: null, vao: null, inst: null, tex: {},
-  bitmaps: null, big: false, dpr: 1, w: 0, h: 0, plates: [], ok: false,
+  bitmaps: null, big: false, dpr: 1, w: 0, h: 0, plates: [], cache: new Map(), ok: false,
   queued: false, lost: false,
   ptr: { tx: 0, ty: 0, x: 0, y: 0, seen: false, touch: false, last: 0 },
   drift: true, t0: performance.now(),
@@ -301,28 +301,32 @@ function resize() {
   const W = Math.round(state.w * state.dpr), H = Math.round(state.h * state.dpr);
   if (state.canvas.width !== W || state.canvas.height !== H) { state.canvas.width = W; state.canvas.height = H; }
   state.plates = Array.from(document.querySelectorAll('.plate')).slice(0, MAX);
+  state.cache.clear();
   request();
 }
 
 // ------------------------------------------------------------------ frame
+// Plate geometry and style are measured once and kept in page coordinates, so a scroll frame costs no
+// layout: screen position = cached page position - scroll. Only a plate that is animating (its reveal)
+// is re-measured each frame; resize, layout and style changes clear its entry.
 function collect() {
   let n = 0, animating = false;
-  const { w, h } = state;
+  const { w, h } = state, sx = scrollX, sy = scrollY;
   state.plates.forEach((el, i) => {
-    const anims = el.getAnimations();
-    if (anims.some(a => a.playState === 'running' || a.pending)) animating = true;
-    const b = el.getBoundingClientRect();
-    if (b.width < 2 || b.height < 2 || b.bottom < -90 || b.top > h + 90 || b.right < -90 || b.left > w + 90) return;
-    const cs = getComputedStyle(el);
-    const op = parseFloat(cs.opacity);
-    if (!(op > 0.004)) return;
-    const m = /blur\(([\d.]+)px\)/.exec(cs.filter);
-    const blur = m ? parseFloat(m[1]) : 0;
-    const radius = parseFloat(cs.borderTopLeftRadius) || 28;
+    const live = el.getAnimations().some(a => a.playState === 'running' || a.pending);
+    if (live) animating = true;
+    let c = state.cache.get(el);
+    if (!c || live || c.live) {
+      const b = el.getBoundingClientRect(), cs = getComputedStyle(el);
+      c = { x: b.left + sx, y: b.top + sy, w: b.width, h: b.height, op: parseFloat(cs.opacity), r: parseFloat(cs.borderTopLeftRadius) || 28, live };
+      state.cache.set(el, c);
+    }
+    const left = c.x - sx, top = c.y - sy;
+    if (c.w < 2 || c.h < 2 || top + c.h < -90 || top > h + 90 || left + c.w < -90 || left > w + 90) return;
+    if (!(c.op > 0.004)) return;
     // tiny flush screws on the cards only; none on the stint rows or the portrait (the photo covers its corners)
-    const mode = el.classList.contains('portrait') || el.classList.contains('stint') || el.dataset.fasteners === 'none' || b.height < 160 ? 0 : 1;
-    const o = n * STRIDE;
-    data.set([b.left, b.top, b.width, b.height, radius, op, (i * 0.6180339) % 1, mode, blur, 0, 0, 0], o);
+    const mode = el.classList.contains('portrait') || el.classList.contains('stint') || el.dataset.fasteners === 'none' || c.h < 160 ? 0 : 1;
+    data.set([left, top, c.w, c.h, c.r, c.op, (i * 0.6180339) % 1, mode, 0, 0, 0, 0], n * STRIDE);
     n++;
   });
   return { n, animating };
@@ -454,12 +458,12 @@ async function boot() {
   reduce.addEventListener('change', request);
   document.addEventListener('visibilitychange', request);
   if (document.fonts) document.fonts.ready.then(resize);
-  const ro = new ResizeObserver(request);
+  const ro = new ResizeObserver(() => { state.cache.clear(); request(); });
   ro.observe(document.body);
   document.querySelectorAll('.plate').forEach(el => ro.observe(el));
   // Reveal animations are started with el.animate() right after the inline opacity is cleared;
   // watching style/class wakes the loop, which then follows getAnimations() until they finish.
-  const mo = new MutationObserver(request);
+  const mo = new MutationObserver(rs => { rs.forEach(r => state.cache.delete(r.target)); request(); });
   document.querySelectorAll('.plate').forEach(el => mo.observe(el, { attributes: true, attributeFilter: ['style', 'class'] }));
   resize();
 }

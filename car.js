@@ -446,8 +446,10 @@ addEventListener('pointermove', e => {
 // name, lower camera for drama.
 const target = new THREE.Vector3(0, 0.45, 0);
 const view = { w: 1, h: 1, ox: 0, oy: 0 };
+let heroH = 1;
 function frame() {
   const w = hero.clientWidth, h = hero.clientHeight;
+  heroH = h;                                   // cached: reading it per frame forced a layout mid-scroll
   renderer.setPixelRatio(DPR());
   renderer.setSize(w, h, false);
   if (composer) { composer.setPixelRatio(DPR()); composer.setSize(w, h); bloom.resolution.set(w, h); }
@@ -652,7 +654,7 @@ function tick(now) {
   tails.forEach(m => { m.emissiveIntensity = tailOn ? 0.9 : 0.2; });
 
   // Pointer + scroll steer the reflections and a gentle turntable (autonomous drift stops when paused).
-  const scroll = Math.min(1, scrollY / Math.max(1, hero.offsetHeight));
+  const scroll = Math.min(1, scrollY / Math.max(1, heroH));
   const px = ptr.active ? ptr.x - 0.5 : (paused ? 0 : Math.sin(t / 3.2) * 0.35);
   const py = ptr.active ? ptr.y - 0.5 : 0;
   yaw += (px * (small() ? 0.25 : 0.5) + scroll * 0.9 - yaw) * 0.05;

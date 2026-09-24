@@ -70,7 +70,7 @@
   q('.chrome-text').forEach(el => el.setAttribute('data-text', el.textContent));
 
   // Which chrome surfaces are on screen (so the sweep only touches those).
-  let lastLxr = -1, nameOnScreen = true, lastPlateT = 0;
+  let lastLxr = -1, nameOnScreen = true;
   const chromeOnScreen = new Set();
   if ('IntersectionObserver' in window) {
     const cio = new IntersectionObserver(es => es.forEach(e => {
@@ -98,27 +98,22 @@
     lastGx = NaN;
   }
 
-  // Moves each metal plate's highlight toward the pointer; on touch it drifts on its own.
-  // Only plates on screen get their highlight updated (no rect reads for the rest).
+  // Moves each metal plate's highlight toward the pointer (CSS finish, when metal.js isn't drawing).
+  // On touch screens the sheen stays put: animating it forced a layout and repainted whole cards every
+  // frame, most of all while scrolling. Only plates on screen are touched.
   const platesOnScreen = new Set();
   if ('IntersectionObserver' in window) {
     const pio = new IntersectionObserver(es => es.forEach(e => e.isIntersecting ? platesOnScreen.add(e.target) : platesOnScreen.delete(e.target)));
     plates.forEach(p => pio.observe(p));
   } else plates.forEach(p => platesOnScreen.add(p));
-  function updatePlates(t) {
-    const H = innerHeight, touch = ptr.t === 0;
-    plates.forEach((p, i) => {
+  function updatePlates() {
+    const H = innerHeight;
+    plates.forEach(p => {
       if (!platesOnScreen.has(p)) return;
       const b = p.getBoundingClientRect();
       if (b.bottom < 0 || b.top > H) return;
-      if (touch) {
-        const k = 0.5 + 0.55 * Math.sin((t || 0) / 1700 + i * 0.9 + b.top / 300);
-        p.style.setProperty('--px', (k * b.width) + 'px');
-        p.style.setProperty('--py', (b.height * 0.2) + 'px');
-      } else {
-        p.style.setProperty('--px', (ptr.cx - b.left) + 'px');
-        p.style.setProperty('--py', (ptr.cy - b.top) + 'px');
-      }
+      p.style.setProperty('--px', (ptr.cx - b.left) + 'px');
+      p.style.setProperty('--py', (ptr.cy - b.top) + 'px');
     });
   }
 
@@ -134,10 +129,12 @@
         const el = en.target; io.unobserve(el);
         el.style.opacity = '';
         if (motionPaused()) return;
+        // transform + opacity only: both run on the compositor. (A blur() filter here re-filtered every
+        // revealing card on the GPU each frame, right while the page was scrolling.)
         el.animate([
-          { opacity: 0, transform: 'translateX(140px) scaleX(1.25)', filter: 'blur(10px)' },
-          { opacity: 1, transform: 'translateX(-6px)', filter: 'blur(0px)', offset: 0.75 },
-          { opacity: 1, transform: 'none', filter: 'blur(0px)' }
+          { opacity: 0, transform: 'translateX(140px) scaleX(1.25)' },
+          { opacity: 1, transform: 'translateX(-6px)', offset: 0.75 },
+          { opacity: 1, transform: 'none' }
         ], { duration: 520, delay: (i++) * 70, easing: 'cubic-bezier(.12,.8,.2,1)', fill: 'backwards' });
         boost = Math.max(boost, 60);
       });
@@ -292,10 +289,7 @@
     }
     // CSS plate highlight only matters when metal.js isn't drawing the plates.
     // The idle drift is slow (period ~10 s), so 20 Hz updates are visually identical and cost a third.
-    if (!document.documentElement.classList.contains('metal-gl') &&
-        ((ptr.t === 0 && document.documentElement.dataset.motion !== 'paused' && t - lastPlateT > 50) || inst > 0)) {
-      lastPlateT = t; updatePlates(t);
-    }
+    if (inst > 0 && FINE && ptr.t !== 0 && !document.documentElement.classList.contains('metal-gl')) updatePlates();
   }
 
   // ---------- wiring ----------
@@ -304,7 +298,7 @@
   addEventListener('pointermove', e => {
     ptr.x = e.clientX / innerWidth; ptr.y = e.clientY / innerHeight;
     ptr.cx = e.clientX; ptr.cy = e.clientY; ptr.t = performance.now();
-    updatePlates();
+    if (FINE && !document.documentElement.classList.contains('metal-gl')) updatePlates();
   }, { passive: true });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(rebuild);
 

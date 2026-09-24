@@ -248,7 +248,7 @@ uniform vec4 uP[MAXR];
 uniform int uN;
 uniform vec4 uCar; uniform vec2 uCarV; uniform float uCarOn;
 uniform vec4 uPtr; uniform vec2 uPtrV;
-uniform sampler2D uGlyph, uJfa; uniform float uGlyphOn, uPxCss;
+uniform sampler2D uGlyph, uJfa; uniform float uGlyphOn, uPxCss; uniform vec2 uGOff;
 float sdRR(vec2 p, vec2 c, vec2 b, float r){ r = min(r, min(b.x, b.y)); vec2 q = abs(p - c) - b + r; return length(max(q, 0.)) + min(max(q.x, q.y), 0.) - r; }
 float smin(float a, float b, float k){ float h = clamp(.5 + .5*(b - a)/k, 0., 1.); return mix(b, a, h) - k*h*(1. - h); }
 void main(){
@@ -262,10 +262,14 @@ void main(){
   }
   if (uGlyphOn > .5){
     // glyph SDF from the jump flood; sub-pixel refined with the coverage
-    ivec2 ip = ivec2(gl_FragCoord.xy), mx = textureSize(uGlyph, 0) - 1;
-    vec4 g = texelFetch(uGlyph, ip, 0);
-    vec2 s = texelFetch(uJfa, ip, 0).xy;
-    float dd = s.x < -1e3 ? 1e4 : length(s - gl_FragCoord.xy) * uPxCss;
+    // the field may have been drawn a few px of scroll ago: read it where this point was then
+    vec2 fc = gl_FragCoord.xy + uGOff;
+    ivec2 ip = ivec2(floor(fc)), mx = textureSize(uGlyph, 0) - 1;
+    bool inField = all(greaterThanEqual(ip, ivec2(0))) && all(lessThanEqual(ip, mx));
+    ip = clamp(ip, ivec2(0), mx);
+    vec4 g = inField ? texelFetch(uGlyph, ip, 0) : vec4(0.);
+    vec2 s = inField ? texelFetch(uJfa, ip, 0).xy : vec2(-1e4);
+    float dd = s.x < -1e3 ? 1e4 : length(s - fc) * uPxCss;
     float gs = (g.r >= .5 ? -dd : dd) + (.5 - g.r) * uPxCss;
     sd = min(sd, gs);
     // halo for page text: dilate the G coverage a few CSS px
@@ -806,10 +810,19 @@ function glyphTexture(w, h) {
 }
 
 // Redraw + upload the glyph raster and rebuild its SDF only when something moved.
-let lastGlyphScroll = NaN;
+// The glyph SDF (headings + the car's silhouette) costs a Canvas2D redraw, a full texture upload and
+// eight jump-flood passes. It is rebuilt only when the content or the car's silhouette changes, or at
+// most every third step while scrolling; in between, the mask pass reads the existing field shifted by
+// the scroll since it was drawn (a distance field is translation-invariant). Rebuilding it every step
+// while the car was on screen or the page was moving was the main cost of scrolling.
+let lastGlyphScroll = NaN, lastCarMask = null, glyphAge = 0;
 function updateGlyphs() {
-  if (!(glyphs.dirty || st.scroll !== lastGlyphScroll || st.carMask)) return;
-  glyphs.dirty = false; lastGlyphScroll = st.scroll;
+  const moved = st.scroll - lastGlyphScroll;
+  glyphAge++;
+  const due = glyphs.dirty || !(moved === moved) || st.carMask !== lastCarMask ||
+    (moved !== 0 && glyphAge >= 3) || Math.abs(moved) > st.H * 0.25;
+  if (!due) return;
+  glyphs.dirty = false; lastGlyphScroll = st.scroll; lastCarMask = st.carMask; glyphAge = 0;
   drawGlyphs();
   gl.bindTexture(gl.TEXTURE_2D, S.glyph.tex);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
@@ -955,6 +968,7 @@ function step(dt, dy) {
   const car = st.car, p = st.ptr, ptrOn = FINE && performance.now() - p.t < 2500;
   R.mask.use().f('uView', W, H).v4('uR', st.shapes).v4('uP', st.props).i('uN', st.n)
     .t('uGlyph', S.glyph.tex).t('uJfa', S.jfa.read.tex).f('uGlyphOn', 1).f('uPxCss', d.dyePx)
+    .f('uGOff', 0, -(st.scroll - lastGlyphScroll) * d.dh / H)
     .f('uCar', ...(car ? [car.x, car.y, car.w, car.h] : [0, 0, 0, 0])).f('uCarV', st.carV[0] / VU, -st.carV[1] / VU).f('uCarOn', car ? (st.carMask ? 2 : 1) : 0)
     .f('uPtr', p.x, p.y, 30, ptrOn ? 1 : 0).f('uPtrV', p.vx / VU, -p.vy / VU);
   draw(S.mask);

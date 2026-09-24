@@ -131,6 +131,9 @@ a:hover { color: var(--acc-glow); }
     0 24px 50px -24px rgba(0,0,0,0.95);
 }
 .plate > * { position: relative; z-index: 2; }
+/* Touch screens: the sheen sits still near the top of each card (no pointer to follow, and moving it
+   repainted the cards every frame). */
+@media (pointer: coarse) { .plate { --px: 30%; --py: 0%; } }
 
 /* Carbon weave, for data panels. */
 .carbon {
@@ -599,6 +602,10 @@ main:focus { outline: none; }
   text-shadow: 0 1px 2px rgba(3,4,6,0.9), 0 0 14px rgba(3,4,6,0.85);
 }
 .chrome-text, .hero-name span { text-shadow: none; }
+/* No halo where the text already sits on an opaque card or panel: blurred shadows are the costliest
+   thing to rasterize as new content scrolls into view, and there they did nothing for contrast. */
+.plate .mono, .plate .kicker, .plate .lang-head, .plate .degree-meta, .plate .stint-team,
+.skills .mono, .skills .skill-name, .telemetry .mono, .spec .mono, .club { text-shadow: none; }
 
 @media (max-width: 760px) {
   .chrome-text, .hero-name.chrome span { --chrome: var(--chrome-sm); }
