@@ -324,6 +324,56 @@ def jbhunt_knockout():
     return out
 
 
+def _minmax_filter(x, r, f):
+    """Separable square min/max filter (f = np.minimum / np.maximum) of radius r."""
+    for axis in (0, 1):
+        p = np.pad(x, [(r, r) if i == axis else (0, 0) for i in range(2)], mode='edge')
+        n, out = x.shape[axis], None
+        for k in range(2 * r + 1):
+            s = np.take(p, range(k, k + n), axis=axis)
+            out = s if out is None else f(out, s)
+        x = out
+    return x
+
+
+def jbhunt_wordmark(img):
+    """Phone variant of the J.B. Hunt mark: the wordmark alone, enlarged to fill the same decal.
+    On phones the sidepod mark is ~57 device px across, so the roll's hatch lines are sub-pixel and
+    average into a grey smear over the letters. A morphological opening (radius 6 px at 1024 wide)
+    removes the thin hatch and roll strokes (3-5 px) and keeps the letters and dots (~30 px strokes)."""
+    w, h = img.size
+    a = np.empty(w * h * 4, np.float32)
+    img.pixels.foreach_get(a)
+    a = a.reshape(h, w, 4)
+    solid = (a[..., 3] > 0.5).astype(np.float32)
+    opened = _minmax_filter(_minmax_filter(solid, 6, np.minimum), 6, np.maximum)
+    keep = _minmax_filter(opened, 2, np.maximum)            # keep the letters' anti-aliased edges
+    letters = a[..., 3] * keep
+    ys, xs = np.nonzero(letters > 0.02)
+    crop = letters[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    ch, cw = crop.shape
+    k = min(0.92 * w / cw, 0.86 * h / ch)
+    sw, sh = max(1, int(cw * k)), max(1, int(ch * k))
+    tmp = bpy.data.images.new('tmp_jbhunt_wm', cw, ch, alpha=True)
+    px = np.ones((ch, cw, 4), np.float32)
+    px[..., 3] = crop
+    tmp.pixels.foreach_set(px.ravel())
+    tmp.scale(sw, sh)
+    s = np.empty(sw * sh * 4, np.float32)
+    tmp.pixels.foreach_get(s)
+    bpy.data.images.remove(tmp)
+    out = np.zeros((h, w, 4), np.float32)
+    out[..., :3] = 1.0
+    y0, x0 = (h - sh) // 2, (w - sw) // 2
+    out[y0:y0 + sh, x0:x0 + sw, 3] = s.reshape(sh, sw, 4)[..., 3]
+    wm = bpy.data.images.new('logo_jbhunt_wordmark', w, h, alpha=True)
+    wm.pixels.foreach_set(out.ravel())
+    wm.filepath_raw = os.path.join(TEX, 'logo-jbhunt-wordmark.webp')
+    wm.file_format = 'WEBP'
+    wm.save()
+    return wm
+
+
 def load_logo(key, max_edge=1024):
     """Crop a transparent white logo to its alpha bounds, downscale, save as WebP. Returns (image, aspect)."""
     path = os.path.join(LOGOS, key + '-white.png')
@@ -2032,9 +2082,18 @@ def livery():
         logo_decal('jbhunt', eps, (-2.285, s * 1.0, 0.845), d, (0, 0, 1), width=0.36)
         logo_decal('georgia-tech-wordmark', eps, (-2.285, s * 1.0, 0.705), d, (0, 0, 1), width=0.38)
         type_decal('ep_no_%d' % s, NUMBER, WHITE, eps, (-2.31, s * 1.0, 0.52), d, (0, 0, 1), 0.16, shear=0.18)
-    # 5) J.B. Hunt across the DRS flap (seen from above/behind)
+    # 5) J.B. Hunt across the DRS flap's upper face, centred on the flap as built and sized to its chord
+    #    (a fixed centre missed the flap once the rear wing moved, so the decal silently came out empty).
+    #    Projected close to the face normal (down and rearward); upright from the hero camera ahead of the car.
     flap = [o for o in col.objects if o.name.startswith('RW_DRSFlap')]
-    logo_decal('jbhunt', flap, (-2.40, 0, 1.4), (0.35, 0, -1), (-1, 0, 0), width=0.62)
+    if flap:
+        pts = [o.matrix_world @ Vector(c) for o in flap for c in o.bound_box]
+        lo = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
+        hi = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
+        width = min(0.62, 0.72 * (hi.x - lo.x) * LOGO['jbhunt'][1], 0.6 * (hi.y - lo.y))
+        dec = logo_decal('jbhunt', flap, ((lo.x + hi.x) / 2, 0, (lo.z + hi.z) / 2), (-0.35, 0, -1), (-1, 0, 0), width=width)
+        print('DRS flap decal: chord x %.3f m, span %.3f m, logo %.3f m wide, %d faces' % (
+            hi.x - lo.x, hi.y - lo.y, width, len(dec.data.polygons) if dec else 0))
     # 6) driver name on the cockpit flanks, number on the nose, PK + number on the fin
     for s, d in side_views:
         type_decal('name_%d' % s, 'P. KONDAPANENI', WHITE, [airbox], (-0.02, s * 0.5, 0.878), d, (-0.05, 0, 1), 0.032, spacing=1.12)
@@ -2106,6 +2165,12 @@ if DO_EXPORT:
         im = bpy.data.images.get(nm)
         if im and im.size[0] > sz:
             im.scale(sz, sz)                     # phone build: the car is ~390 CSS px wide at DPR <= 1.25
+    # J.B. Hunt reads as clean white letters on phones instead of a grey hatched smear (jbhunt_wordmark)
+    if LOGO['jbhunt'][0] and 'jbhunt' in LOGO_MAT:
+        wm = jbhunt_wordmark(LOGO['jbhunt'][0])
+        for n in LOGO_MAT['jbhunt'].node_tree.nodes:
+            if n.type == 'TEX_IMAGE' and n.image == LOGO['jbhunt'][0]:
+                n.image = wm
     kw_m = dict(kw, filepath=OUT_M, export_draco_position_quantization=12, export_draco_normal_quantization=10,
                 export_draco_texcoord_quantization=12, export_draco_mesh_compression_level=7)
     bpy.ops.export_scene.gltf(**kw_m)
@@ -2113,6 +2178,10 @@ if DO_EXPORT:
     for o in col.objects:                        # leave the scene as it was for the preview renders
         if o.type == 'MESH' and 'PhoneDecimate' in o.modifiers:
             o.modifiers.remove(o.modifiers['PhoneDecimate'])
+    if 'jbhunt' in LOGO_MAT:
+        for n in LOGO_MAT['jbhunt'].node_tree.nodes:
+            if n.type == 'TEX_IMAGE' and n.image and n.image.name == 'logo_jbhunt_wordmark':
+                n.image = LOGO['jbhunt'][0]
 
 # =============================================================== contact shadow bake
 if DO_BAKE:

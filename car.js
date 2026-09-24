@@ -288,7 +288,8 @@ new GLTFLoader().setDRACOLoader(draco).load(PHONE && !DBG.has('fullcar') ? 'asse
       o.castShadow = false;
     }
     if (m.name.startsWith('Titanium') || m.name.startsWith('Metal') || m.name.startsWith('Exhaust')) m.envMapIntensity = 1.25;
-    for (const k of ['map', 'normalMap', 'roughnessMap']) if (m[k]) m[k].anisotropy = PHONE ? 2 : 8;
+    // Logos and type cover a few pixels at grazing angles: full anisotropy keeps them crisp for almost no cost.
+    for (const k of ['map', 'normalMap', 'roughnessMap']) if (m[k]) m[k].anisotropy = PHONE && !m.name.startsWith('Decal') ? 2 : 8;
   });
   ({ sprung: chassis, ws: wheels } = rigCar(root));
   body.add(car);
