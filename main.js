@@ -283,6 +283,17 @@
   const counts = { stints: q('.stint').length, degrees: q('.degree').length, langs: q('.lang').length, skills: q('.skill').length };
   q('[data-count]').forEach(el => { el.textContent = String(counts[el.dataset.count] ?? el.textContent).padStart(2, '0'); });
 
+  // ---------- radio waveform: bars with a speech-like envelope (static heights, CSS animates) ----------
+  q('[data-wave]').forEach(w => {
+    const n = innerWidth < 600 ? 36 : 56;
+    for (let i = 0; i < n; i++) {
+      const b = document.createElement('i'), x = i / (n - 1);
+      const env = 0.35 + 0.65 * Math.pow(Math.sin(Math.PI * x), 0.7) * (0.6 + 0.4 * Math.sin(x * 19.3));
+      b.style.cssText = `--lv:${Math.max(.18, env).toFixed(2)};--lo:${(0.08 + 0.1 * ((i * 7) % 5) / 5).toFixed(2)};--d:${520 + ((i * 37) % 9) * 60}ms;--dl:${-((i * 113) % 900)}ms`;
+      w.appendChild(b);
+    }
+  });
+
   // ---------- mobile menu ----------
   const menuBtn = root.querySelector('[data-menu]');
   const menu = document.getElementById(menuBtn.getAttribute('aria-controls'));

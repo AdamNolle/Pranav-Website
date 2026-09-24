@@ -595,9 +595,10 @@ main:focus { outline: none; }
 
 /* ---------- telemetry strip (Driver): compact race-style numbers, counted from the page ---------- */
 .telemetry {
-  list-style: none; margin: 0; padding: 0;
+  list-style: none; margin: 0; padding: 0 8px;
   display: grid; grid-template-columns: repeat(4, 1fr);
-  border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);
+  border: 1px solid var(--rule); border-radius: 18px;
+  background: rgba(5,6,8,0.86);   /* sits on the smoke: keep numbers and labels >= AA */
 }
 .telemetry li { display: grid; gap: 6px; padding: 18px 4px 16px; }
 .telemetry li + li { border-left: 1px solid var(--rule); padding-left: 18px; }
@@ -614,3 +615,28 @@ main:focus { outline: none; }
   /* Hero: pull the name up under the car; the empty smoke band was dead space on phones. */
   .hero { min-height: 86svh; }
 }
+
+/* ---------- radio panel: fills the right half of the closing section ---------- */
+.radio-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: clamp(28px, 4vw, 64px); align-items: center; }
+.radio-grid .radio-title { margin: 0; }
+.radio-panel { display: grid; gap: 22px; padding: clamp(24px, 2.6vw, 36px); }
+.radio-head { display: flex; justify-content: space-between; align-items: center; }
+.radio-head > span:first-child { display: inline-flex; align-items: center; gap: 10px; color: var(--fg-soft); }
+.rec { width: 8px; height: 8px; border-radius: 50%; background: #ff3b2f; box-shadow: 0 0 10px #ff3b2f; animation: pulse 1.6s ease-in-out infinite; }
+.radio-line { margin: 0; font-size: clamp(18px, 1.5vw, 22px); line-height: 1.4; color: var(--fg-hi); max-width: 34ch; }
+.radio-panel .radio-cta { gap: 14px 24px; }
+/* Voice-activity bars: transform-only animation (compositor), staggered per bar by main.js. */
+.wave { display: flex; align-items: center; gap: 3px; height: 56px; }
+.wave i {
+  flex: 1 1 0; height: 100%; border-radius: 2px;
+  background: linear-gradient(180deg, #a6c8ff, var(--acc) 55%, var(--acc-deep));
+  transform: scaleY(var(--lv, .2)); transform-origin: 50% 50%;
+  animation: talk var(--d, 900ms) ease-in-out var(--dl, 0ms) infinite alternate;
+}
+@keyframes talk { from { transform: scaleY(var(--lo, .12)); } to { transform: scaleY(var(--lv, .7)); } }
+:root[data-motion="paused"] .wave i, :root[data-motion="paused"] .rec { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { .wave i { animation: none; } }
+@media (max-width: 860px) { .radio-grid { grid-template-columns: 1fr; } }
+.plate .radio-cta > .mono { background: none; box-shadow: none; }
+.btn-primary { white-space: nowrap; }
+@media (max-width: 420px) { .radio-panel .btn-primary { padding: 15px 22px; font-size: 15px; } }
