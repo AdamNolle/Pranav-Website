@@ -119,6 +119,7 @@
         if (!en.isIntersecting) return;
         const el = en.target; io.unobserve(el);
         el.style.opacity = '';
+        if (motionPaused()) return;
         el.animate([
           { opacity: 0, transform: 'translateX(140px) scaleX(1.25)', filter: 'blur(10px)' },
           { opacity: 1, transform: 'translateX(-6px)', filter: 'blur(0px)', offset: 0.75 },
@@ -131,19 +132,23 @@
   }
 
   // ---------- start sequence ----------
-  function race() {
+  const motionPaused = () => document.documentElement.dataset.motion === 'paused';
+  const pods = [0, 1, 2, 3, 4].map(i => q(`[data-pod="${i}"]`));
+  const lightsLabel = root.querySelector('[data-lights-label]');
+  const off = () => pods.flat().forEach(el => { el.style.background = '#2a0a08'; el.style.boxShadow = 'none'; });
+  let introLive = false;
+  // Replay Intro plays even with motion paused (it's an explicit request); page load doesn't.
+  function race(replay) {
     timers.forEach(clearTimeout); timers = [];
     letters.forEach(l => l.getAnimations().forEach(a => a.cancel()));
     root.style.setProperty('--nameo', '0'); root.style.setProperty('--heroo', '0');
     nameEl.removeAttribute('data-landed');
-    const pods = [0, 1, 2, 3, 4].map(i => q(`[data-pod="${i}"]`));
-    const label = root.querySelector('[data-lights-label]');
-    const off = () => pods.flat().forEach(el => { el.style.background = '#2a0a08'; el.style.boxShadow = 'none'; });
     off();
-    label.textContent = 'LIGHTS';
+    lightsLabel.textContent = 'LIGHTS';
     document.documentElement.dataset.race = 'reset';
     dispatchEvent(new Event('race:reset'));
-    if (reduce) { root.style.setProperty('--nameo', '1'); root.style.setProperty('--heroo', '1'); nameEl.setAttribute('data-landed', ''); return; }
+    if (reduce || (motionPaused() && !replay)) { lightsLabel.textContent = 'LIGHTS OUT'; return land(false); }
+    introLive = true;
     if (!CONFIG.startLights) { timers.push(setTimeout(fly, 150)); return; }
     pods.forEach((p, i) => timers.push(setTimeout(() => {
       p.forEach(el => { el.style.background = '#ff2415'; el.style.boxShadow = '0 0 18px 4px rgba(255,36,21,0.6), inset 0 -3px 6px rgba(0,0,0,0.35)'; });
@@ -151,9 +156,38 @@
       dispatchEvent(new CustomEvent('race:light', { detail: i }));
     }, 150 + i * 190)));
     timers.push(setTimeout(() => {
-      off(); label.textContent = 'LIGHTS OUT';
+      off(); lightsLabel.textContent = 'LIGHTS OUT';
       fly();
     }, 150 + 4 * 190 + 260 + Math.random() * 200));
+  }
+
+  // Name, stripe and meta in their final place; `animate` plays the landing flourish.
+  function land(animate) {
+    introLive = false;
+    root.style.setProperty('--nameo', '1'); root.style.setProperty('--heroo', '1');
+    nameEl.setAttribute('data-landed', '');
+    if (!animate) return;
+    const st = root.querySelector('[data-stripe]');
+    st.animate([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 320, easing: 'cubic-bezier(.16,1,.3,1)' });
+    q('[data-heroin]').forEach((el, i) => el.animate([
+      { opacity: 0, transform: 'translateX(60px)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }
+    ], { duration: 420, delay: i * 80, easing: 'cubic-bezier(.16,1,.3,1)', fill: 'backwards' }));
+    glint = performance.now();
+  }
+
+  // HIG Motion, "let people cancel motion": a scroll, tap, click or key press during the intro
+  // lands it at once instead of making people wait it out.
+  function skipIntro() {
+    if (!introLive) return;
+    timers.forEach(clearTimeout); timers = [];
+    letters.forEach(l => l.getAnimations().forEach(a => a.finish()));
+    root.querySelector('[data-streaks]').textContent = '';
+    if (document.documentElement.dataset.race !== 'go') {
+      off(); lightsLabel.textContent = 'LIGHTS OUT';
+      document.documentElement.dataset.race = 'go';
+      dispatchEvent(new Event('race:go'));
+    }
+    land(false);
   }
 
   function fly() {
@@ -184,16 +218,7 @@
       a.onfinish = () => s.remove();
     });
     const end = (letters.length - 1) * step + dur;
-    timers.push(setTimeout(() => {
-      root.style.setProperty('--heroo', '1');
-      nameEl.setAttribute('data-landed', '');
-      const st = root.querySelector('[data-stripe]');
-      st.animate([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 320, easing: 'cubic-bezier(.16,1,.3,1)' });
-      q('[data-heroin]').forEach((el, i) => el.animate([
-        { opacity: 0, transform: 'translateX(60px)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }
-      ], { duration: 420, delay: i * 80, easing: 'cubic-bezier(.16,1,.3,1)', fill: 'backwards' }));
-      glint = performance.now();
-    }, end - 120));
+    timers.push(setTimeout(() => land(true), end - 120));
   }
 
   // ---------- frame loop: speedo, rev LEDs, chrome glint ----------
@@ -272,7 +297,7 @@
   const setMotion = paused => {
     document.documentElement.dataset.motion = paused ? 'paused' : 'running';
     motionBtn.setAttribute('aria-pressed', String(paused));
-    motionBtn.querySelector('[data-motion-label]').textContent = paused ? 'Play motion' : 'Pause motion';
+    motionBtn.querySelector('[data-motion-label]').textContent = paused ? 'Play Motion' : 'Pause Motion';
     try { localStorage.setItem('motion', paused ? 'paused' : 'running'); } catch (e) {}
     dispatchEvent(new CustomEvent('motion:toggle', { detail: { paused } }));
   };
@@ -327,8 +352,14 @@
 
   root.querySelector('[data-replay]').addEventListener('click', () => {
     scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
-    race();
+    race(true);
   });
+  // Any real input cancels the intro. (Not `scroll`: Replay Intro scrolls to the top itself.)
+  // The document-level touchstart listener is also what lets iOS Safari apply :active press states.
+  addEventListener('wheel', skipIntro, { passive: true });
+  addEventListener('pointerdown', skipIntro);
+  document.addEventListener('touchstart', skipIntro, { passive: true });
+  addEventListener('keydown', e => { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) skipIntro(); });
 
   // ---------- staged GPU start-up ----------
   // The three WebGL layers each compile shaders and upload textures; starting them together
