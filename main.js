@@ -279,6 +279,10 @@
   setMotion(document.documentElement.dataset.motion === 'paused');
   motionBtn.addEventListener('click', () => setMotion(motionBtn.getAttribute('aria-pressed') !== 'true'));
 
+  // ---------- telemetry: counts come from the content itself, so they can't drift ----------
+  const counts = { stints: q('.stint').length, degrees: q('.degree').length, langs: q('.lang').length, skills: q('.skill').length };
+  q('[data-count]').forEach(el => { el.textContent = String(counts[el.dataset.count] ?? el.textContent).padStart(2, '0'); });
+
   // ---------- mobile menu ----------
   const menuBtn = root.querySelector('[data-menu]');
   const menu = document.getElementById(menuBtn.getAttribute('aria-controls'));

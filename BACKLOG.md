@@ -60,6 +60,8 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
   - Phones get a light render path; `car.glb` is 1.08 MB.
 
 ## Also open
+- **Car round 3 (subagent, in progress):** livery redesign (three Cycles concepts, pick one, refine) plus an accuracy/detail pass against real photos.
+- **Dead space:** section rhythm is tightened (page 5.7 → 5.3 screens) and the Driver column has a telemetry strip; remaining candidates are the hero's bottom-right and the Academy/Radio spacing.
 - Car: proportions, fin, wing, halo and number placement now match 2024-25 references. Further realism needs a specific target (e.g. a named car and angle to match), not open-ended tweaks.
 - **Needs Adam's OK:** install a KTX2 encoder (`brew install ktx`) to cut car and metal texture weight.
 - Car textures: try KTX2/Basis once an encoder is installed (livery set is WebP at 4K wide).
