@@ -920,8 +920,17 @@ def build_pod(side):
         r[:, 0] = POD_FRONT + dx
         return r
     # letterbox inlet: deep dark mouth -> inner wall -> rounded lip -> outer skin
-    rings = [shrink(0.72, -0.16), shrink(0.84, -0.012), shrink(0.93, 0.004), shrink(0.985, 0.002)] + outer
+    rings = [shrink(0.70, -0.22), shrink(0.82, -0.02), shrink(0.92, 0.006), shrink(0.985, 0.003)] + outer
     nm = 3
+    # overbite: the upper lip leads the lower lip (2023-25 letterbox inlets), easing out over the first stations
+    p0 = POD(POD_FRONT)
+    for k in range(len(rings)):
+        w = 1.0 if k < 6 else max(0.0, 1 - (k - 5) / 6)
+        if w <= 0:
+            break
+        t = np.clip((rings[k][:, 2] - p0['zu']) / (p0['zt'] - p0['zu']), 0, 1)
+        rings[k] = rings[k].copy()
+        rings[k][:, 0] += 0.055 * t ** 1.5 * w
 
     def mat(cc, r, i):
         return 1 if r < nm - 1 or r == -1 else 0
@@ -1312,7 +1321,7 @@ def livery_paint(P, N, ID, mask, parts, concept):
         paint = paint * (1 - np.clip(lower, 0, 1))
         # hero swoosh along the shoulder -> downwash -> coke -> fin
         kx = [0.74, 0.40, 0.0, -0.45, -0.90, -1.20, -1.45, -1.66]
-        zc = pchip(kx[::-1], [0.558, 0.522, 0.470, 0.394, 0.316, 0.286, 0.360, 0.470][::-1], np.clip(x, -1.66, 0.74).ravel()).reshape(x.shape)
+        zc = pchip(kx[::-1], [0.566, 0.548, 0.515, 0.440, 0.335, 0.292, 0.360, 0.470][::-1], np.clip(x, -1.66, 0.74).ravel()).reshape(x.shape)
         hh = pchip(kx[::-1], [0.030, 0.028, 0.025, 0.021, 0.018, 0.018, 0.024, 0.030][::-1], np.clip(x, -1.66, 0.74).ravel()).reshape(x.shape)
         sw = crisp(hh - np.abs(z - zc)) * (ny > 0.25) * (is_pod | is_body) * crisp(0.72 - x) * smoothstep(-1.70, -1.55, x)
         lay(sw, along([(0.8, blue * 1.15), (-0.4, blue), (-1.7, blue * 0.9)]))
@@ -1363,9 +1372,9 @@ def livery_paint(P, N, ID, mask, parts, concept):
     rgb = rgb * (1 - 0.8 * groove[..., None])
     rgb = mixc(rgb, (0.32, 0.33, 0.35), bolts)
     painted = np.clip(paint + pin, 0, 1)
-    coat = 0.28 + 0.72 * painted
-    rough = 0.44 - 0.22 * painted + 0.25 * groove
-    metal = 0.22 + 0.33 * paint + 0.6 * np.clip(pin + bolts, 0, 1)
+    coat = painted                                   # satin black carries no clearcoat: only the colour is gloss
+    rough = 0.58 - 0.36 * painted + 0.15 * groove
+    metal = 0.45 - 0.1 * paint + 0.5 * np.clip(pin + bolts, 0, 1)      # dark-base metallic keeps satin black from greying
     height = -groove + 0.6 * bolts
     return rgb, coat, np.clip(rough, 0, 1), np.clip(metal, 0, 1), height
 
@@ -1490,39 +1499,52 @@ def build_diffuser():
 diffuser = build_diffuser()
 
 # ---------------------------------------------------------------- front wing
-FW_ELEMS = [
-    # chord(s), pitch(s) centre->tip, thickness
-    # 2024-25 proportions: ~0.24 m tall at the centre, ~0.35 m at the outboard tips
-    (lambda s: 0.300 - 0.05 * s, lambda s: 3 + 4 * s, 0.10),
-    (lambda s: 0.175 - 0.04 * s, lambda s: 10 + 8 * s + 4 * s ** 6, 0.085),
-    (lambda s: 0.145 - 0.04 * s, lambda s: 18 + 10 * s + 5 * s ** 6, 0.08),
-    (lambda s: 0.118 - 0.035 * s, lambda s: 26 + 12 * s + 6 * s ** 6, 0.075),
+# 2024-25 front wing: chord and angle vary strongly across the span. Near the nose the flaps are short and
+# flat and rise to meet the nose (which sits on element 2) over a dipped neutral centre section; mid-span they
+# are deepest; the outboard 15 % sweeps up steeply and rolls into the endplate.
+FW_S = [0.0, 0.15, 0.45, 0.75, 0.90, 1.0]
+FW_TAB = [  # (chord table, pitch table, t/c)
+    ([0.300, 0.292, 0.272, 0.245, 0.215, 0.195], [2, 3, 4, 6, 8, 10], 0.10),
+    ([0.110, 0.150, 0.190, 0.172, 0.135, 0.100], [7, 12, 16, 20, 24, 28], 0.085),
+    ([0.082, 0.120, 0.160, 0.150, 0.120, 0.090], [12, 19, 26, 30, 34, 38], 0.08),
+    ([0.062, 0.098, 0.135, 0.128, 0.105, 0.080], [18, 27, 35, 39, 42, 45], 0.075)   # tips capped at 45 deg: a moderate sweep, not a curl,
 ]
+FW_ELEMS = [(None, None, t[2]) for t in FW_TAB]
 FW_HALF = 0.962
 
 
 def fw_stack(y):
-    """Leading edges of all four elements at span position y."""
-    s = min(1.0, max(0.0, (abs(y) - 0.24) / (FW_HALF - 0.24)))
+    """Leading edges (x, z), chord and pitch of all four elements at span position y."""
+    ay = abs(y)
+    s = min(1.0, max(0.0, (ay - 0.24) / (FW_HALF - 0.24)))
+    core = max(0.0, 1 - ay / 0.16) ** 2                       # under the nose
     xle = 3.035 - 0.05 * s ** 1.5
-    zle = 0.072 + 0.018 * s + 0.012 * s ** 4
+    zle = 0.072 + 0.018 * s + 0.012 * s ** 4 - 0.008 * max(0.0, 1 - ay / 0.25) ** 2   # neutral-section dip
     out = []
-    for k, (ch, pt, tc) in enumerate(FW_ELEMS):
-        c, p = ch(s), pt(s)
-        out.append((xle, zle, c, p))
-        a = math.radians(p)
+    for k, (ctab, ptab, tc) in enumerate(FW_TAB):
+        c = float(pchip(FW_S, ctab, s)[0])
+        pt = float(pchip(FW_S, ptab, s)[0])
+        if k >= 1:
+            zle += 0.028 * core                               # flaps rise to meet the nose on element 2
+        out.append((xle, zle, c, pt))
+        a = math.radians(pt)
         xte, zte = xle - c * math.cos(a), zle + c * math.sin(a)
-        # next element: small overlap, slot gap above the trailing edge; outboard sweep + rise
-        xle = xte + 0.030 - 0.035 * s ** 2 - 0.015 * s ** 6
-        zle = zte + 0.010 + 0.006 * s ** 3 + 0.004 * s ** 6        # slot gap; tips curl gently into the endplate
+        xle = xte + 0.030 - 0.03 * s ** 2 - 0.02 * s ** 6
+        zle = zte + 0.010 + 0.006 * s ** 3                    # slot gap
     return out
 
 
 def build_front_wing():
-    ys = np.concatenate([np.linspace(-FW_HALF, -0.3, 28), np.linspace(-0.3, 0.3, 12)[1:-1], np.linspace(0.3, FW_HALF, 28)])
+    ys = np.concatenate([np.linspace(-FW_HALF, -0.3, 44), np.linspace(-0.3, 0.3, 21)[1:-1], np.linspace(0.3, FW_HALF, 44)])
     for k in range(4):
-        mat = M['blue'] if k == 3 else M['carbon']
-        w = wing('FW_Element%d' % (k + 1), ys, lambda y, k=k: fw_stack(y)[k], [mat], tc=FW_ELEMS[k][2], camber=0.05)
+        if k == 3:
+            # top flap: blue inboard; outer ~30 % bare carbon with only a thin blue leading-edge stripe
+            nprof = len(naca(FW_ELEMS[k][2], 0.05))
+            le = nprof // 2
+            fn = lambda c, r, i, le=le: 0 if (abs(c.y) < 0.70 * FW_HALF or abs(i - le) <= 2) else 1
+            w = wing('FW_Element4', ys, lambda y: fw_stack(y)[3], [M['blue'], M['carbon']], tc=FW_ELEMS[k][2], camber=0.05, matfn=fn)
+        else:
+            w = wing('FW_Element%d' % (k + 1), ys, lambda y, k=k: fw_stack(y)[k], [M['carbon']], tc=FW_ELEMS[k][2], camber=0.05)
         box_uv(w)
     for s in (1, -1):
         y = s * (FW_HALF + 0.022)
@@ -1538,6 +1560,23 @@ def build_front_wing():
         # footplate with an upturned outer lip, and a small diveplane on the endplate
         plate('FW_Footplate', [(3.06, 0.050), (2.30, 0.050), (2.36, 0.060), (3.03, 0.060)], 0.11, s * (FW_HALF - 0.045), M['carbon'], bevel=0.002)
         plate('FW_FootLip', [(3.0, 0.058), (2.36, 0.058), (2.40, 0.085), (2.95, 0.075)], 0.006, s * (FW_HALF + 0.045), M['carbon'], bevel=0.0015)
+        # slot-gap separators: short brackets bridging each slot at two span stations
+        for yy in (0.50, 0.76):
+            st = fw_stack(yy)
+            for k in range(3):
+                a_ = math.radians(st[k][3])
+                te = (st[k][0] - st[k][2] * math.cos(a_), st[k][1] + st[k][2] * math.sin(a_))
+                le = st[k + 1]
+                out = [(te[0] + 0.018, te[1] - 0.006), (te[0] - 0.004, te[1] - 0.004), (le[0] - 0.012, le[1] + 0.008), (le[0] + 0.006, le[1] + 0.004)]
+                plate('FW_SlotSeparator', out, 0.003, s * yy, M['carbon'], bevel=0.0008)
+        # flap-adjuster actuator pod on the top flap, just outboard of the nose
+        st = fw_stack(0.30)[3]
+        a4 = math.radians(st[3])
+        mx_, mz_ = st[0] - st[2] * 0.45 * math.cos(a4), st[1] + st[2] * 0.45 * math.sin(a4) + 0.012
+        loft('FW_AdjusterPod', [np.column_stack([np.full(12, xx), np.array(ellipse(w, h, 12))[:, 0] + s * 0.30,
+                                                 np.array(ellipse(w, h, 12))[:, 1] + mz_ + (mx_ - xx) * math.tan(a4) * 0.6])
+                                for xx, w, h in ((mx_ + 0.05, 0.004, 0.003), (mx_ + 0.03, 0.016, 0.011), (mx_ - 0.03, 0.017, 0.012), (mx_ - 0.055, 0.006, 0.005))],
+             [M['carbon']], sharp=60)
 
 
 
@@ -1632,6 +1671,8 @@ def build_halo():
     path = smooth_path(full, 6)
     prof = ellipse(0.021, 0.026, 18)
     halo = sweep('Halo', path, prof, [M['black']], up=(1, 0, 0))   # painted, as on 2024-25 cars
+    # thin silver pinstripe along the underside/base line of the hoop
+    sweep('HaloPinstripe', [(p[0], p[1] * 1.012, p[2] - 0.019) for p in path], ellipse(0.0022, 0.0022, 8), [M['polished']], up=(1, 0, 0))
     # carbon aero fairing on top of the hoop
     top = [p for p in path if p[2] > 0.80]
     fpath = [(p[0], p[1], p[2] + 0.02) for p in top]
@@ -1690,8 +1731,13 @@ rbox('HANS', (0.12, 0.25, 0.035), (0.335, 0, 0.628), M['carbon'], bevel=0.014)
 # ---------------------------------------------------------------- mirrors, cameras, antennas, pitots
 for s in (1, -1):
     mx, my, mz = 0.93, s * 0.47, 0.668
-    rbox('MirrorHousing', (0.075, 0.17, 0.058), (mx, my, mz), M['black'], rot=(0, 0, math.radians(-s * 6)), bevel=0.018, segs=4)
-    rbox('MirrorGlass', (0.004, 0.15, 0.042), (mx - 0.037, my, mz), M['glass'], rot=(0, 0, math.radians(-s * 6)), bevel=0.003)
+    prof_m = [(0.036 * math.cos(a), 0.029 * math.sin(a)) for a in np.linspace(-math.pi / 2, math.pi / 2, 13)] + [(-0.034, 0.029), (-0.034, -0.029)]
+    rings_m = []
+    for yy in np.linspace(-0.088, 0.088, 13):
+        k = (1 - (abs(yy) / 0.088) ** 6) ** 0.35 * 0.85 + 0.15            # rounded ends
+        rings_m.append([(mx + u * (0.4 + 0.6 * k) if u > 0 else mx + u, my + yy, mz + v * k) for u, v in prof_m])
+    loft('MirrorHousing', rings_m, [M['black']], sharp=50)
+    rbox('MirrorGlass', (0.003, 0.15, 0.046), (mx - 0.0355, my, mz), M['glass'], bevel=0.003)
     ys_w = np.linspace(my - 0.085, my + 0.085, 7)
     box_uv(wing('MirrorWinglet', ys_w, lambda yy: (mx + 0.03, mz + 0.048, 0.06, 6), [M['carbon']], tc=0.09, camber=0.06))
     for dy in (-0.06, 0.06):
@@ -1740,7 +1786,9 @@ def wheel(name, x, yc, w, side, front):
         revolve('WheelRing', [(0.064, h - 0.024), (0.052, h - 0.020), (0.052, h - 0.014), (0.064, h - 0.012), (0.064, h - 0.024)][::-1],
                 [M['blue']], c, side, segs=48),
         # centre-lock nut: castellated look via 6 segments
-        revolve('WheelNut', [(0.0, h - 0.004), (0.028, h - 0.004), (0.034, h - 0.010), (0.034, h - 0.030)], [M['polished']], c, side, segs=6, sharp=30),
+        revolve('WheelNut', [(0.0, h + 0.004), (0.034, h + 0.004), (0.042, h - 0.004), (0.042, h - 0.030)], [M['polished']], c, side, segs=6, sharp=30),
+        # brake-duct / rim deflector lip standing proud at the rim edge
+        revolve('RimLip', [(0.2215, h - 0.018), (0.2235, h - 0.006), (0.2325, h - 0.004), (0.2345, h - 0.016)], [M['carbon']], c, side, segs=96),
     ]
     # sidewall lettering ring (conformal: follows the sidewall bulge, 0.6 mm proud)
     rs = np.linspace(0.262, 0.334, 6)
@@ -1779,24 +1827,20 @@ def tyre_label_texture():
     return save_img('tyre_label', img)
 
 
-def wheel_cover_texture(W=2048, H=256):
-    """Polar art for the 2022-style wheel covers: u = angle, v = rim (0) -> hub (1).
-    Satin carbon-black disc, five swept spokes graded deep -> electric blue toward the rim, silver rim line."""
-    u = (np.arange(W) + 0.5)[None, :] / W
-    v = (np.arange(H) + 0.5)[:, None] / H
-    px = 1.0 / W * 5
-    ph = (u * 5 + (1 - v) ** 1.4 * 0.55) % 1.0
-    spoke = aa(0.055 - np.abs(ph - 0.5) * (0.6 + 0.4 * v), px) * smoothstep(0.93, 0.62, v) * smoothstep(0.0, 0.05, v)
-    k = np.clip(v / 0.8, 0, 1)[..., None]
-    spoke_rgb = np.array(BLUE) * (1 - k) + np.array(DEEP) * k
-    base = np.broadcast_to(np.array((0.006, 0.0065, 0.008)), (H, W, 3)).copy()
-    rgb = base * (1 - spoke[..., None]) + spoke_rgb * spoke[..., None]
-    ring = aa(0.006 - np.abs(v - 0.035), 1 / H)
-    rgb = rgb * (1 - ring[..., None]) + np.array(SILVER) * ring[..., None]
-    return save_img('wheel_cover', to_srgb(np.broadcast_to(rgb, (H, W, 3))))
+def wheel_cover_texture(W=512, H=256):
+    """2022-style solid wheel cover in the livery: satin black disc, an electric-blue ring just inside the
+    rim with a silver line outboard of it, and a deep-blue hub ring. v = rim (0) -> hub (1)."""
+    v = (np.arange(H) + 0.5)[:, None] / H * np.ones((1, W))
+    px = 1.0 / H
+    rgb = np.broadcast_to(np.array((0.0045, 0.005, 0.006)), (H, W, 3)).copy()
+    for lo, hi, colr in ((0.07, 0.15, BLUE), (0.84, 0.90, DEEP)):
+        a = aa(v - lo, px) * aa(hi - v, px)
+        rgb = mixc(rgb, colr, a)
+    rgb = mixc(rgb, SILVER, aa(0.006 - np.abs(v - 0.045), px))
+    return save_img('wheel_cover', to_srgb(rgb))
 
 
-M['cover'] = principled('WheelCover', (0.01, 0.01, 0.012), 0.2, 0.38, 0.8, 0.05)
+M['cover'] = principled('WheelCover', (0.01, 0.01, 0.012), 0.15, 0.48, 0.0, 0.05)      # satin, no coat
 add_base(M['cover'], wheel_cover_texture())
 M['tyre_label'] = principled('Tyre_Label', (0.8, 0.8, 0.8), 0.0, 0.7)
 add_base(M['tyre_label'], tyre_label_texture(), alpha=True)
@@ -1974,7 +2018,7 @@ def livery():
     # (the hero sweep, pinstripe and panel lines are painted in the livery texture set; logos are decals)
     # 2) J.B. Hunt title logo on the sidepods
     for s, d in side_views:
-        logo_decal('jbhunt', [pods[0 if s > 0 else 1]], (-0.10, s * 0.9, 0.405), d, (0, 0, 1), width=0.80)
+        logo_decal('jbhunt', [pods[0 if s > 0 else 1]], (-0.10, s * 0.9, 0.37), d, (0, 0, 1), width=0.70)
     # 3) Missouri S&T on the nose sides and front-wing endplates
     for s, d in side_views:
         logo_decal('missouri-st', [body], (2.33, s * 0.4, 0.33), d, (0.25, 0, 1), width=0.22)
@@ -1987,6 +2031,7 @@ def livery():
         # sized to the endplate (0.52 m x 0.68 m) so both marks read at hero scale
         logo_decal('jbhunt', eps, (-2.285, s * 1.0, 0.845), d, (0, 0, 1), width=0.36)
         logo_decal('georgia-tech-wordmark', eps, (-2.285, s * 1.0, 0.705), d, (0, 0, 1), width=0.38)
+        type_decal('ep_no_%d' % s, NUMBER, WHITE, eps, (-2.31, s * 1.0, 0.52), d, (0, 0, 1), 0.16, shear=0.18)
     # 5) J.B. Hunt across the DRS flap (seen from above/behind)
     flap = [o for o in col.objects if o.name.startswith('RW_DRSFlap')]
     logo_decal('jbhunt', flap, (-2.40, 0, 1.4), (0.35, 0, -1), (-1, 0, 0), width=0.62)
@@ -2166,6 +2211,7 @@ if VIEWS:
         'rear': ((-5.5, -3.6, 1.9), (-0.6, 0, 0.45), 50),
         'top': ((0.3, 0.0, 12.0), (0.3, 0, 0), 50),
         'detail': ((-1.2, 2.2, 1.6), (0.3, 0.3, 0.6), 50),
+        'inlet': ((2.3, 1.9, 0.95), (0.7, 0.5, 0.48), 55),
         'endplate': ((-2.1, 2.6, 0.95), (-2.25, 0.48, 0.72), 50),
         'nosetop': ((3.4, 0.9, 1.5), (1.9, 0, 0.45), 50),
         'hero': ((-3.4, 5.6, 1.35), (0.2, 0, 0.42), 45),
