@@ -172,7 +172,7 @@ a:hover { color: var(--acc-glow); }
 .nav-name { color: var(--fg-soft); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-menu { justify-self: end; min-width: 0; }
 .nav-links { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px 24px; min-width: 0; }
-.nav-links a { display: inline-flex; align-items: center; min-height: 44px; }
+.nav-links a { display: inline-flex; align-items: center; gap: 0.6em; min-height: 44px; }
 .menu-btn { display: none; }
 .nav-links a { color: #c3ccd8; }
 .nav-links a:hover { color: var(--acc-glow); }
@@ -428,7 +428,8 @@ a:hover { color: var(--acc-glow); }
   position: relative; margin: 10px 0 28px;
   font-family: var(--display); font-style: var(--display-style); font-weight: 900;
   font-variation-settings: 'wdth' var(--wide);
-  font-size: clamp(64px,15vw,240px); line-height: 0.86; text-transform: uppercase;
+  /* capped so "BOX," (2.7em) fits its column at the section's 1320px max width */
+  font-size: clamp(64px,15vw,216px); line-height: 0.86; text-transform: uppercase;
   width: fit-content; padding-right: 0.12em;
 }
 .radio-cta { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 20px 32px; }
@@ -462,6 +463,19 @@ a:hover { color: var(--acc-glow); }
 /* ---------- responsive ---------- */
 @media (max-width: 1024px) {
   .nav-links { gap: 6px 16px; }
+}
+/* Below ~1400px the links don't fit half the bar, so the HUD centres between brand and links instead of
+   on the page, and the links keep one row. Tablet landscape drops the name (badge only) and the 01-05
+   prefixes (the mobile menu keeps them). */
+@media (min-width: 861px) and (max-width: 1399px) {
+  .nav { grid-template-columns: auto minmax(0,1fr) auto; }
+  .nav-links { flex-wrap: nowrap; }
+}
+@media (min-width: 861px) and (max-width: 1180px) {
+  .nav-name { display: none; }
+}
+@media (min-width: 861px) and (max-width: 1100px) {
+  .nav-no { display: none; }
 }
 
 @media (max-width: 860px) {
@@ -520,8 +534,10 @@ a:hover { color: var(--acc-glow); }
   .footer { justify-content: center; text-align: center; }
 }
 
+@media (max-width: 560px) {
+  .nav-name { display: none; }   /* the badge alone: the full name would run under the HUD */
+}
 @media (max-width: 420px) {
-  .nav-name { display: none; }
   .menu-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
   .lang-head { flex-wrap: wrap; gap: 2px 12px; }
   .degree-top .org-logo { height: 32px; }
@@ -647,6 +663,7 @@ main:focus { outline: none; }
 /* ---------- radio panel: fills the right half of the closing section ---------- */
 .radio-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: clamp(28px, 4vw, 64px); align-items: center; }
 .radio-grid .radio-title { margin: 0; }
+.radio-grid { margin-top: 10px; }   /* same kicker-to-headline spacing as the other sections */
 .radio-panel { display: grid; gap: 22px; padding: clamp(24px, 2.6vw, 36px); }
 .radio-head { display: flex; justify-content: space-between; align-items: center; }
 .radio-head > span:first-child { display: inline-flex; align-items: center; gap: 10px; color: var(--fg-soft); }

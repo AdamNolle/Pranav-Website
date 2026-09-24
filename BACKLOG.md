@@ -17,6 +17,14 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
 5. **Texture quality everywhere:** (2× DPR pass 2026-09-23: logos, type, metal and portrait are crisp; the car backdrop was beige and is now cool navy. Suspension members now use 28-segment profiles and the GLB stores normals at 11 bits, so the banding is gone.) no visible tiling, banding, aliasing, blur or stretching on the car, metal cards, smoke sprites, logos or portrait. Check each at 2× DPR.
 
 ## Done (2026-09-24)
+- **Lighting and airflow quality:**
+  - The smoke and particles are lit by a ray-marched single-scattering pass: a key light plus the laser sheet, shadowed by the smoke and by the obstacle SDF, with haze in-scattering.
+  - Fixed a regression where both adaptive governors used a running-minimum refresh estimate. One back-to-back frame pair made every frame look slow, so the smoke shed pressure iterations and particles for the rest of the visit. The estimate is now a snapped median of the fastest sixth, and smoke shedding is a bounded last resort that recovers.
+- **Overlap audit (10 viewports, 320–2560 px):**
+  - "Box, box." overran the contact card at 1920+; it's now capped at 216 px.
+  - The contact label now has the same spacing as the other section labels.
+  - The nav name no longer runs under the HUD at 430 px.
+  - Nav links no longer wrap onto two rows at 861–1399 px: the bar goes content-sized there, the name hides below 1180 and the 01–05 prefixes below 1100.
 - **Refresh-rate smoothness (120 Hz target):**
   - The smoke used to skip every other frame on high-refresh screens. Now it renders every frame with flow extrapolation between its fixed 60 Hz steps, and its quality governor keys off the detected refresh rate.
   - Found by tracing: the idle chrome sweep repainted the name's gradient letters every frame, causing 0.5 s GPU raster stalls on desktop. It's now a compositor-only glint layer, and section titles sweep only with a real pointer.

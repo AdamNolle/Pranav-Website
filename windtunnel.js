@@ -490,6 +490,30 @@ void main(){
   o = vec4(d * .25, 0., 1.);
 }`;
 
+// ---------- lighting: single scattering, ray-marched per step at half the dye resolution ----------
+// r: key light, marched from each point toward a source beyond the top-left corner; g: the laser
+// sheet, marched back to the inlet on the left edge. Both sum optical depth from the smoke itself
+// (Beer-Lambert) and from anything solid (headings, plates, the car's silhouette: the obstacle SDF),
+// so dense smoke shades the flow behind it and every obstacle casts a shadow shaft downstream.
+const LIGHT_SRC = (W, H) => [-0.3 * W, -0.55 * H];   // key light position, CSS px (beyond the top-left corner)
+const FS_LIGHT = FSH + `
+uniform sampler2D uDye, uMask; uniform vec2 uView, uSrc; uniform float uKd, uKo;
+float ob(vec2 q){ vec2 uv = vec2(q.x / uView.x, 1. - q.y / uView.y); return smoothstep(6., -6., texture(uMask, uv).x); }
+float dens(vec2 q){ vec2 uv = vec2(q.x / uView.x, 1. - q.y / uView.y); vec2 d = texture(uDye, uv).xy; return d.x + d.y; }
+void main(){
+  vec2 p = vec2(vUv.x, 1. - vUv.y) * uView;
+  float j = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(.06711056, .00583715))));   // static per-texel jitter
+  // key light: march toward the source, stopping where the ray leaves the viewport
+  vec2 toL = uSrc - p; float len = length(toL); vec2 dir = toL / max(len, 1e-3);
+  vec2 ex = vec2(dir.x < 0. ? -p.x / dir.x : (uView.x - p.x) / max(dir.x, 1e-4), dir.y < 0. ? -p.y / dir.y : (uView.y - p.y) / max(dir.y, 1e-4));
+  float tMax = min(len, min(ex.x, ex.y)), ds = tMax / 28., tau = 0.;
+  for (int i = 0; i < 28; i++){ vec2 q = p + dir * (float(i) + j) * ds; tau += (uKd * dens(q) + uKo * ob(q)) * ds; }
+  // laser sheet: enters from the inlet (left edge) and travels right
+  float dsx = p.x / 20., tx = 0.;
+  for (int i = 0; i < 20; i++){ vec2 q = vec2((float(i) + j) * dsx, p.y); tx += (uKd * 1.4 * dens(q) + uKo * ob(q)) * dsx; }
+  o = vec4(exp(-tau), exp(-tx), 0., 1.);
+}`;
+
 const FS_PREFILL = FSH + LIB + RAKE + `
 uniform vec2 uView; uniform float uScrollPrev, uDecayPx;
 void main(){ o = vec4(rake((1. - vUv.y) * uView.y + uScrollPrev) * exp(-uDecayPx * vUv.x * uView.x), 0., 1.); }`;
@@ -499,11 +523,11 @@ const FS_FILL = FSH + `uniform vec4 uVal; void main(){ o = uVal; }`;
 
 // ---------- composite: smoke tone-map, wisp texture, laser sheet ----------
 const FS_RENDER = FSH + `
-uniform sampler2D uDye, uGlow, uVel, uMask, uUV, uWisp;
+uniform sampler2D uDye, uGlow, uVel, uMask, uUV, uWisp, uLight;
 uniform vec2 uDyeRes, uGlowRes, uView;
 uniform vec4 uCarRect;
 uniform float uFreeMag, uTime, uLaserY, uLaserW, uGain, uDim, uPhase, uWispK, uHasWisp, uDebug, uLeadS, uShiftR;
-uniform vec2 uInvView;
+uniform vec2 uInvView, uSrcPx;
 vec4 bspline(sampler2D t, vec2 uv, vec2 res){
   vec2 s = uv * res - .5, i = floor(s), f = s - i, f2 = f * f, f3 = f2 * f;
   vec2 w0 = (1. - 3.*f + 3.*f2 - f3) / 6., w1 = (4. - 6.*f2 + 3.*f3) / 6., w2 = (1. + 3.*f + 3.*f2 - 3.*f3) / 6., w3 = f3 / 6.;
@@ -519,6 +543,7 @@ void main(){
   vec2 uvS = vUv - vec2(0., uShiftR);
   vec2 uvR = uvS - texture(uVel, uvS).xy * uLeadS * uInvView;
   vec4 m = texture(uMask, uvS);
+  if (uDebug > 1.5){ vec2 l = texture(uLight, uvS).rg; o = vec4(l.r, l.g * .5, 0., 1.); return; }   // light field
   if (uDebug > .5){ o = vec4(m.x < 0. ? .5 : 0., m.y * .3, 0., .5); return; }
   vec2 d = bspline(uDye, uvR, uDyeRes).xy * uGain;
   vec2 g = bspline(uGlow, uvR, uGlowRes).xy * uGain;
@@ -535,16 +560,23 @@ void main(){
   d *= wd; g *= mix(1., wd, .5);
   float spd = length(texture(uVel, uvS).xy) / max(uFreeMag, 1e-3);
   float comp = clamp(spd, .2, 2.2);
-  float laser = exp(-pow((px.y - uLaserY) / uLaserW, 2.));
+  // key light and laser sheet, each shadowed by the smoke and obstacles between it and this point
+  vec2 lt = texture(uLight, uvS).rg;
+  float key = .22 + 1.1 * lt.r;
+  float laser = exp(-pow((px.y - uLaserY) / uLaserW, 2.)) * lt.g;
   vec3 grey = vec3(.78, .85, .95), blue = vec3(.169, .482, 1.);
   float gi = 1. - exp(-d.x * 1.5), bi = 1. - exp(-d.y * 1.7);
   vec3 col = grey * gi * .5 + blue * bi * .95 + grey * (1. - exp(-g.x * 1.2)) * .16 + blue * (1. - exp(-g.y * 1.4)) * .42;
-  col *= (.72 + .3 * comp) * (1. + .9 * laser);
+  col *= (.72 + .3 * comp) * key * (1. + 1.1 * laser);
   vec2 cq = max(abs(px - (uCarRect.xy + uCarRect.zw * .5)) - uCarRect.zw * .5, 0.);
   bool inCar = uCarRect.z > 0. && cq == vec2(0.);
   float keep = mix(1., uDim, m.y) * (inCar ? smoothstep(-9., 2., m.x) : smoothstep(-1., 5., m.x));
   col *= keep;
   col += blue * laser * .010 * keep;
+  // in-scattering off the thin haze in the air: the light's shafts and the obstacles' shadows show
+  // between the smoke too, strongest nearest the source (top left) and fading across the page
+  float near = exp(-length(px - uSrcPx) / (1.35 * length(uView)));
+  col += (vec3(.5, .6, .82) * .07 * lt.r * near + blue * .045 * laser) * keep;
   col += (hash(gl_FragCoord.xy + fract(uTime) * 91.) - .5) / 255.;
   col = max(col, 0.);
   o = vec4(col, min(1., max(col.r, max(col.g, col.b)) * .22));
@@ -591,7 +623,7 @@ const FS_NULL = HDR + `out vec4 o; void main(){ o = vec4(0.); }`;
 // Tracer motes: Cycles mote sprites (glow / bokeh / streak), stretched along the local velocity.
 const VS_PDRAW = HDR + `
 layout(location = 0) in vec4 aS;
-uniform sampler2D uVel, uMask;
+uniform sampler2D uVel, uMask, uLight;
 uniform vec2 uView;
 uniform float uStreak, uDpr, uLaserY, uLaserW, uAlpha, uDim, uLifeMin, uLifeMax, uSize, uLead, uDyR;
 out vec2 vT; out float vA; out vec3 vC; out float vK; out float vLen;
@@ -617,9 +649,10 @@ void main(){
   float fade = smoothstep(0., .7, age) * smoothstep(life, life - 1., age);
   vec4 m = textureLod(uMask, clamp(uv, 0., 1.), 0.);
   fade *= smoothstep(0., 6., m.x) * mix(1., uDim, m.y);
-  float laser = exp(-pow((p.y - uLaserY) / uLaserW, 2.));
+  vec2 lt = textureLod(uLight, clamp(uv, 0., 1.), 0.).rg;
+  float laser = exp(-pow((p.y - uLaserY) / uLaserW, 2.)) * lt.g;
   float e = (k > .5 ? .35 : 1.) * size / (size + len * .3);
-  vA = uAlpha * fade * e * (.35 + 1.4 * laser) * mix(.45, 1., fract(seed * 3.3));
+  vA = uAlpha * fade * e * (.35 + 1.4 * laser) * mix(.45, 1.15, lt.r) * mix(.45, 1., fract(seed * 3.3));
   vC = fract(seed * 9.1) < .24 ? vec3(.3, .58, 1.) : vec3(.86, .92, 1.);
   vK = (len > size * 1.5 && k < .5) ? 3. : k;
 }`;
@@ -638,7 +671,7 @@ void main(){
 // Volumetric puffs: Cycles smoke atlas frames as soft rotating sprites that ride the flow.
 const VS_PUFF = HDR + `
 layout(location = 0) in vec4 aS;
-uniform sampler2D uVel, uMask;
+uniform sampler2D uVel, uMask, uLight;
 uniform vec2 uView;
 uniform float uAlpha, uDim, uLifeMin, uLifeMax, uSize, uGrow, uTime, uLead, uDyR;
 out vec2 vT; out float vA; out float vF; out float vBlue;
@@ -660,7 +693,7 @@ void main(){
   vF = floor(fract(seed * 17.13) * 32.);
   vec4 m = textureLod(uMask, clamp(uv, 0., 1.), 0.);
   float fade = smoothstep(0., life * .25, age) * smoothstep(life, life * .55, age);
-  vA = uAlpha * fade * mix(1., uDim, m.y) * smoothstep(-20., 30., m.x);
+  vA = uAlpha * fade * mix(1., uDim, m.y) * smoothstep(-20., 30., m.x) * mix(.5, 1.15, textureLod(uLight, clamp(uv, 0., 1.), 0.).r);
   vBlue = step(.8, fract(seed * 6.1));
 }`;
 const FS_PUFF = HDR + `
@@ -811,7 +844,7 @@ async function initGL() {
       mask: [VS_QUAD, FS_MASK], advVel: [VS_QUAD, FS_ADV_VEL], curl: [VS_QUAD, FS_CURL],
       vort: [VS_QUAD, FS_VORT], div: [VS_QUAD, FS_DIV], pres: [VS_QUAD, FS_PRES],
       grad: [VS_QUAD, FS_GRAD], dyeA: [VS_QUAD, FS_DYE_A], dyeB: [VS_QUAD, FS_DYE_B],
-      advUV: [VS_QUAD, FS_ADV_UV], glow: [VS_QUAD, FS_GLOW], prefill: [VS_QUAD, FS_PREFILL],
+      advUV: [VS_QUAD, FS_ADV_UV], glow: [VS_QUAD, FS_GLOW], light: [VS_QUAD, FS_LIGHT], prefill: [VS_QUAD, FS_PREFILL],
       copy: [VS_QUAD, FS_COPY], fill: [VS_QUAD, FS_FILL], render: [VS_QUAD, FS_RENDER],
       pupd: [VS_PUPD, FS_NULL, ['vS']], seed: [VS_QUAD, FS_SEED], jfa: [VS_QUAD, FS_JFA], pdraw: [VS_PDRAW, FS_PDRAW], puff: [VS_PUFF, FS_PUFF],
     });
@@ -861,6 +894,7 @@ function build(prev) {
     div: target(d.sw, d.sh, fmt.r), curl: target(d.sw, d.sh, fmt.r), uv: pair(d.sw, d.sh, fmt.rgba),
     dye: pair(d.dw, d.dh, fmt.rg), phi1: target(d.dw, d.dh, fmt.rg),
     glow: target(Math.max(8, d.dw >> 2), Math.max(8, d.dh >> 2), fmt.rg),
+    light: target(Math.max(8, d.dw >> 1), Math.max(8, d.dh >> 1), fmt.rg),
   };
   // resample the old state into the new textures so a resize doesn't pop
   if (old && old.vel) {
@@ -868,7 +902,7 @@ function build(prev) {
     R.copy.use().t('uSrc', old.vel.read.tex); draw(N.vel.read);
     R.copy.use().t('uSrc', old.dye.read.tex); draw(N.dye.read);
     R.copy.use().t('uSrc', old.uv.read.tex); draw(N.uv.read);
-    ['mask', 'div', 'curl', 'phi1', 'glow', 'glyph'].forEach(k => old[k].free());
+    ['mask', 'div', 'curl', 'phi1', 'glow', 'glyph', 'light'].forEach(k => old[k].free());
     ['vel', 'p', 'uv', 'dye', 'jfa'].forEach(k => old[k].free());
     N.parts = old.parts; N.puffs = old.puffs;
   } else {
@@ -954,6 +988,8 @@ function step(dt, dy) {
     .f('uNozzle', 10).f('uScrollNow', st.scroll).f('uCarRect', ...carRect()).f('uDiffuse', 0.012 + 0.05 * st.gust);
   draw(S.dye.write); S.dye.swap();
   R.glow.use().t('uDye', S.dye.read.tex).f('uTx', 1 / d.dw, 1 / d.dh); draw(S.glow);
+  R.light.use().t('uDye', S.dye.read.tex).t('uMask', S.mask.tex).f('uView', W, H).f('uSrc', ...LIGHT_SRC(W, H))
+    .f('uKd', 0.0045).f('uKo', 0.06); draw(S.light);
 
   // advected wisp coordinates: each phase resets once per cycle, half a cycle apart
   const period = 3.2;
@@ -1008,8 +1044,9 @@ function render(lead = 0, rdy = 0) {
     .t('uWisp', wisp || S.glow.tex)
     .f('uDyeRes', d.dw, d.dh).f('uGlowRes', S.glow.w, S.glow.h).f('uView', W, H).f('uFreeMag', freeStream())
     .f('uTime', st.time).f('uLaserY', laserY).f('uLaserW', laserW).f('uGain', 0.85).f('uDim', 0.08)
-    .f('uCarRect', ...carRect()).f('uPhase', S.phase || 0).f('uWispK', 0.5).f('uHasWisp', wisp ? 1 : 0).f('uDebug', api.debug ? 1 : 0)
-    .f('uLeadS', lead * VU).f('uInvView', 1 / W, 1 / H).f('uShiftR', rdy / H);
+    .f('uCarRect', ...carRect()).f('uPhase', S.phase || 0).f('uWispK', 0.5).f('uHasWisp', wisp ? 1 : 0).f('uDebug', +api.debug || 0)
+    .f('uLeadS', lead * VU).f('uInvView', 1 / W, 1 / H).f('uShiftR', rdy / H).t('uLight', S.light.tex)
+    .f('uSrcPx', ...LIGHT_SRC(W, H));
   draw(null);
   if (api.debug) return;
 
@@ -1018,7 +1055,7 @@ function render(lead = 0, rdy = 0) {
   if (TEX.atlas) {
     gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     const puff = (pl, alpha, size, grow) => {
-      R.puff.use().t('uVel', S.vel.read.tex).t('uMask', S.mask.tex).t('uAtlas', TEX.atlas).f('uView', W, H)
+      R.puff.use().t('uVel', S.vel.read.tex).t('uMask', S.mask.tex).t('uLight', S.light.tex).t('uAtlas', TEX.atlas).f('uView', W, H)
         .f('uAlpha', alpha).f('uDim', 0.08).f('uLifeMin', pl.lifeMin).f('uLifeMax', pl.lifeMax).f('uSize', size).f('uGrow', grow).f('uTime', st.time)
         .f('uLead', lead).f('uDyR', rdy);
       gl.bindVertexArray(pl.a.drw);
@@ -1030,7 +1067,7 @@ function render(lead = 0, rdy = 0) {
   // tracer motes (additive)
   if (TEX.motes) {
     gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
-    R.pdraw.use().t('uVel', S.vel.read.tex).t('uMask', S.mask.tex).t('uMotes', TEX.motes).f('uView', W, H)
+    R.pdraw.use().t('uVel', S.vel.read.tex).t('uMask', S.mask.tex).t('uLight', S.light.tex).t('uMotes', TEX.motes).f('uView', W, H)
       .f('uStreak', 0.022).f('uDpr', d.dpr).f('uLaserY', laserY).f('uLaserW', laserW).f('uAlpha', 0.85).f('uDim', 0.1)
       .f('uLifeMin', S.parts.lifeMin).f('uLifeMax', S.parts.lifeMax).f('uSize', 1).f('uLead', lead).f('uDyR', rdy);
     gl.bindVertexArray(S.parts.a.drw);
@@ -1070,7 +1107,7 @@ function frame(now) {
   // draw time. Motion is continuous at any refresh rate for the solver cost of 60 Hz.
   const real = Math.min(0.1, Math.max(0, (now - (last || now - FIXED * 1000)) / 1000));
   last = now;
-  vsync = Math.min(vsync * 1.001, Math.max(1 / 360, real || vsync));   // shortest recent frame = the display's
+  if (real) vsync = refreshInterval(real);
   acc = Math.min(acc + real, FIXED * 3);
   const y = scrollY;
   let dy = y - st.scroll;
@@ -1088,17 +1125,35 @@ function frame(now) {
   window.__windFlow = { speed: Math.min(1, freeStream() / (base * 4)), gust: Math.min(1, st.gust) };
   render(Math.min(acc, FIXED), n ? 0 : dy);
   if (!shown) { shown = true; canvas.style.opacity = '1'; ready(); }
-  // adaptive quality: shed pressure iterations and particle draws if frames run long for this display
+  // Adaptive quality, last resort only. The smoke is a small share of the GPU (the car's resolution
+  // governor absorbs normal overload), so it sheds only when frames run at under half the display's
+  // rate for ~3 s, never below its tier minus 8 pressure iterations or 60% of the particles, and it
+  // gives both back after a stretch of headroom.
   frameEma += (dt - frameEma) * 0.1;
-  slow = frameEma > vsync * 1.35 ? slow + 1 : Math.max(0, slow - 2);
-  if (slow > 90) {
-    slow = 0;
-    if (S.iters > 10) S.iters -= 4;
-    else { S.parts.draw = Math.max(3000, Math.round(S.parts.draw * 0.7)); }
+  slow = frameEma > vsync * 1.9 ? slow + 1 : Math.max(0, slow - 2);
+  roomy = frameEma < vsync * 1.1 ? roomy + 1 : 0;
+  if (roomy > 300 && (S.iters < T.iters || S.parts.draw < S.parts.n)) {
+    roomy = 0;
+    if (S.iters < T.iters) S.iters = Math.min(T.iters, S.iters + 4);
+    else S.parts.draw = Math.min(S.parts.n, Math.round(S.parts.draw / 0.8));
+  }
+  if (slow > 3 / vsync) {
+    slow = 0; roomy = 0;
+    if (S.parts.draw > S.parts.n * 0.6) S.parts.draw = Math.max(Math.round(S.parts.n * 0.6), Math.round(S.parts.draw * 0.8));
+    else if (S.iters > Math.max(10, T.iters - 8)) S.iters -= 4;
   }
 }
 const FIXED = 1 / 60;
-let acc = 0, frameEma = 1 / 60, vsync = 1 / 60;
+let acc = 0, frameEma = 1 / 60, vsync = 1 / 60, roomy = 0;
+// Display refresh interval: the median of the fastest sixth of the last 120 frames, snapped to a
+// standard rate. A running minimum was fooled by one back-to-back pair of frames after a hitch, which
+// then made every normal frame look slow and shed quality for the rest of the visit.
+const RATES = [60, 75, 90, 100, 120, 144, 165, 240], ivs = [];
+function refreshInterval(dt) {
+  ivs.push(dt); if (ivs.length > 120) ivs.shift();
+  const hz = 1 / [...ivs].sort((a, b) => a - b)[Math.floor(ivs.length / 6)];
+  return 1 / RATES.reduce((p, c) => (Math.abs(c - hz) < Math.abs(p - hz) ? c : p));
+}
 function start() { if (!raf && alive && glOK && !frozen && !document.hidden) { last = 0; acc = FIXED; raf = requestAnimationFrame(frame); } }
 function stop() { cancelAnimationFrame(raf); raf = 0; }
 
@@ -1152,6 +1207,7 @@ const ival = setInterval(() => { if (!document.hidden) measure(); }, 3000);   //
 const api = {
   debug: false,
   get tier() { return T && T.name; },
+  get quality() { return S.parts && { iters: S.iters, particles: S.parts.draw, of: S.parts.n, hz: Math.round(1 / vsync) }; },
   get dims() { return dims; },
   get stats() { return { rects: st.rects.length, glyphs: glyphs.list.length, solid: glyphs.list.filter(g => g.s).length, tip: st.tip }; },
   destroy() {

@@ -43,7 +43,7 @@ const ready = () => { if (!readySent) { readySent = true; dispatchEvent(new Even
 
 let renderer;
 try {
-  renderer = new THREE.WebGLRenderer({ canvas, alpha: !new URLSearchParams(location.search).has('opaque'), antialias: !PHONE || devicePixelRatio < 2, powerPreference: 'high-performance' });
+  renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: !PHONE || devicePixelRatio < 2, powerPreference: 'high-performance' });
 } catch (e) {
   canvas.remove();
   throw e;
@@ -475,11 +475,16 @@ frame();
 // the floor reflection and bloom). If frames run over the display's budget (8.3 ms at 120 Hz) for a
 // sustained second while the car is parked, the pixel ratio steps down 0.25, to no lower than 1. It
 // never steps back up during the visit, so quality can't oscillate. A 60 Hz screen keeps full quality.
-const gov = { ema: 1 / 60, vsync: 1 / 60, over: 0, since: 0 };
+const gov = { ema: 1 / 60, vsync: 1 / 60, over: 0, since: 0, ivs: [] };
+const RATES = [60, 75, 90, 100, 120, 144, 165, 240];
 function governResolution(now, dt) {
   if (DPR_FIXED || !dt) return;
   gov.since ||= now;
-  gov.vsync = Math.min(gov.vsync * 1.001, Math.max(1 / 360, dt));   // shortest recent frame = the display's
+  // display refresh: median of the fastest sixth of recent frames, snapped to a standard rate (a running
+  // minimum is fooled by one back-to-back pair of frames and then sees every frame as over budget)
+  gov.ivs.push(dt); if (gov.ivs.length > 120) gov.ivs.shift();
+  const hz = 1 / [...gov.ivs].sort((a, b) => a - b)[Math.floor(gov.ivs.length / 6)];
+  gov.vsync = 1 / RATES.reduce((p, c) => (Math.abs(c - hz) < Math.abs(p - hz) ? c : p));
   gov.ema += (dt - gov.ema) * 0.08;
   if (now - gov.since < 2000) return;                                // let the landing settle first
   gov.over = gov.ema > gov.vsync * 1.25 ? gov.over + 1 : Math.max(0, gov.over - 2);
