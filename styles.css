@@ -501,7 +501,6 @@ a:hover { color: var(--acc-glow); }
 @media (max-width: 420px) {
   .nav-name { display: none; }
   .menu-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-  .spec { grid-template-columns: 1fr; }
   .lang-head { flex-wrap: wrap; gap: 2px 12px; }
   .degree-top .org-logo { height: 32px; }
 }
@@ -575,7 +574,7 @@ main:focus { outline: none; }
 
 /* Small labels that sit directly on the smoke get a soft dark chip (a spread shadow, so no
    layout change). Measured worst-case contrast with smoke passing behind: >= 7:1. */
-.kicker, .clubs > h3, .skills > h3, .skill .mono, .radio-cta > .mono, .hero-meta span {
+.kicker, .clubs > h3, .radio-cta > .mono, .hero-meta span {
   width: fit-content; border-radius: 6px;
   background: rgba(5,6,8,0.88); box-shadow: 0 0 0 5px rgba(5,6,8,0.88);
 }
@@ -640,3 +639,11 @@ main:focus { outline: none; }
 .plate .radio-cta > .mono { background: none; box-shadow: none; }
 .btn-primary { white-space: nowrap; }
 @media (max-width: 420px) { .radio-panel .btn-primary { padding: 15px 22px; font-size: 15px; } }
+
+/* Skills: one dark panel behind the whole list instead of a chip under every small label. */
+.skills { background: rgba(5,6,8,0.86); border: 1px solid var(--rule); border-radius: 18px; padding: 14px clamp(14px, 1.6vw, 22px) 4px; }
+.skills > h3 { padding-top: 4px; }
+.skill:last-child { border-bottom: 0; }
+.skills { border-bottom: 1px solid var(--rule); }
+@media (max-width: 420px) { .spec > div { padding: 14px 14px; } .spec dd { font-size: 15px; } }
+.footer { background: rgba(5,6,8,0.9); }
