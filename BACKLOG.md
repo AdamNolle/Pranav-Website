@@ -16,6 +16,22 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
 4. **F1 car to near 1:1 with a real car:** keep iterating `blender/build_car.py` against reference photos and dimensions of a real 2024–25 car (Williams FW46 in blue and black is the best reference). Proportions first, then surfacing, then detail. Aim for a beautiful original livery with properly sized logos, and soft-plus-hard studio lighting.
 5. **Texture quality everywhere:** (2× DPR pass 2026-09-23: logos, type, metal and portrait are crisp; the car backdrop was beige and is now cool navy. Suspension members now use 28-segment profiles and the GLB stores normals at 11 bits, so the banding is gone.) no visible tiling, banding, aliasing, blur or stretching on the car, metal cards, smoke sprites, logos or portrait. Check each at 2× DPR.
 
+## Done (2026-09-24)
+- **Apple HIG pass** (checked against the guideline text for Accessibility, Typography, Layout, Motion, Buttons, Color and Writing):
+  - 44 pt hit regions on the desktop nav links; a press state on every control (iOS `:active` enabled); an 11 pt minimum on phones; title-case verb labels ("Replay Intro", "Pause Motion", "Back to Top") and a drawn replay glyph.
+  - Stints, skills and club pills no longer move or light up on hover, since they aren't controls.
+  - Any scroll, tap, click or key lands the intro at once. Pause Motion now also covers scroll reveals, the intro on load and the live pulse, and Reduce Motion drops hover/press movement.
+  - Increase Contrast and Reduce Transparency variants; dark `color-scheme`.
+  - A scroll edge effect under the nav; `viewport-fit=cover` with safe-area margins.
+  - Dynamic Type: content text in `rem`, with the root following `-apple-system-body` on iOS. Display headings are capped with container units (longest words measured), and the Driver column and telemetry reflow.
+  - Checked at 100% and 200% text on 1440, 820 (iPad), 390, 320 and 844×390: no overflow or clipping, all targets ≥ 44 pt, no text under the minimum, and axe clean.
+  - Plain-language navigation and kickers (About, Experience, Skills, Education, Contact) beside the F1 headlines.
+- **Car, open round-4 items closed:**
+  - The DRS-flap J.B. Hunt decal had never shipped: it was an empty mesh because its fixed centre missed the moved flap. It's now centred on the flap and sized to its chord.
+  - Phones get a wordmark-only J.B. Hunt (hatching stripped by a morphological opening), so it no longer greys out.
+  - Decal maps use 8× anisotropy on phones.
+- README rewritten with the live URL and screenshots; Open Graph and Twitter card tags added (`assets/og.jpg`) for link previews.
+
 ## Done (2026-09-23)
 - **Performance pass, no visual change** (measured on a 2× retina desktop and a 3× phone with 4× CPU throttle):
   - Desktop hero: 24–26 fps with 100 ms spikes → 56 fps. Phone hero: 36 → 60 fps. Scrolled sections hold 60 fps.
@@ -67,7 +83,7 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
   - Satin (no-clearcoat) black zones; a front wing with span-varying flaps, a neutral-section dip, slot brackets and an adjuster pod, with tip rise capped and carbon tips.
   - A letterbox inlet with overbite and a dark throat; livery wheel covers; J.B. Hunt on the black lower flank.
   - Race number on the rear-wing endplates, a halo pinstripe, and aerofoil mirror housings.
-- **Car, possible next:** the J.B. Hunt hatching greys out at small phone sizes. Desktop fps benchmarks are unreliable while Adam's own Brave has a heavy GPU tab open, so use A/B runs.
+- **Car, note:** desktop fps benchmarks are unreliable while Adam's own Brave has a heavy GPU tab open, so use A/B runs. Rebuilds aren't byte-identical: the livery atlas packs a few small islands differently each run, but UVs and textures always export together.
 - **Dead space:** section rhythm is tightened (page 5.7 → 5.3 screens) and the Driver column has a telemetry strip; remaining candidates are the hero's bottom-right and the Academy/Radio spacing.
 - Car: proportions, fin, wing, halo and number placement now match 2024-25 references. Further realism needs a specific target (e.g. a named car and angle to match), not open-ended tweaks.
 - **Needs Adam's OK:** install a KTX2 encoder (`brew install ktx`) to cut car and metal texture weight.
