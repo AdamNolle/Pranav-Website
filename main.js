@@ -1,432 +1,271 @@
+// Team PK: event-driven UI. No permanent animation loop, no layout reads per pointer event.
 (() => {
-  const CONFIG = { accent: '#2b7bff', startLights: true };
+  const root = document.documentElement;
+  const $ = s => document.querySelector(s);
+  const all = s => [...document.querySelectorAll(s)];
+  const media = matchMedia('(prefers-reduced-motion: reduce)');
+  const fine = matchMedia('(hover: hover) and (pointer: fine)');
+  const hero = $('[data-hero]');
+  const name = $('[data-name]');
+  const words = all('[data-word]');
+  const motionButton = $('button[data-motion]');
+  let userPaused = root.dataset.motion === 'paused';
+  const isPaused = () => media.matches || userPaused;
+  const emit = (event, detail) => dispatchEvent(new CustomEvent(event, { detail }));
 
-  const root = document.getElementById('page');
-  const q = s => Array.from(root.querySelectorAll(s));
-  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-  root.style.setProperty('--acc', CONFIG.accent);
-
-  // Split the hero name into per-letter spans so each can fly in and carry its own chrome offset.
-  q('[data-word]').forEach(w => {
-    w.textContent = '';
-    for (const ch of w.dataset.word) {
-      const s = document.createElement('span');
-      s.dataset.l = ''; s.textContent = ch;
-      w.appendChild(s);
-    }
-  });
-
-  // Outline "grid slot" of the name, painted from the first frame; the chrome letters fly into it.
-  // It is also the page's first large paint, so LCP no longer waits for the start-light intro.
-  const ghost = document.createElement('div');
-  ghost.className = 'name-ghost';
-  ghost.setAttribute('aria-hidden', 'true');
-  q('[data-word]').forEach(w => {
-    const line = document.createElement('div');
-    line.textContent = w.dataset.word;
-    ghost.appendChild(line);
-  });
-  root.querySelector('[data-name]').appendChild(ghost);
-
-  // Specular sweep over the name, compositor-only: a white copy of the name seen through a soft band
-  // (the window). The window slides by x and the copy inside it by -x, so the white text stays on the
-  // letters while the band travels. Only transforms change per frame, so the name never repaints
-  // (repainting its gradient-clipped letters every frame cost up to half a second of GPU raster).
-  const glintBox = document.createElement('div'), glintWin = document.createElement('div');
-  const glintTxt = ghost.cloneNode(true);
-  glintBox.className = 'name-glint'; glintWin.className = 'name-glint-win'; glintTxt.className = 'name-glint-txt';
-  glintBox.setAttribute('aria-hidden', 'true');
-  glintWin.appendChild(glintTxt); glintBox.appendChild(glintWin);
-  root.querySelector('[data-name]').appendChild(glintBox);
-
-  const letters = q('[data-l]');
-  const nameEl = root.querySelector('[data-name]');
-  const hero = root.querySelector('[data-hero]');
-  // Full-width shift-light strip: one LED per ~26px, green then red then blue, filling left to right.
-  const redline = document.querySelector('[data-redline]');
-  let leds = [];
-  function buildRedline() {
-    const n = Math.max(16, Math.min(64, Math.round(innerWidth / 26)));
-    if (n === leds.length) return;
-    redline.textContent = '';
-    leds = Array.from({ length: n }, (_, i) => {
-      const d = document.createElement('i');
-      const f = i / n;
-      if (f >= 0.72) d.className = 'b'; else if (f >= 0.4) d.className = 'r';
-      redline.appendChild(d);
-      return d;
-    });
-    lastLit = -1;
+  // Keep a readable HTML heading even if scripts, models, or graphics are unavailable.
+  function fitName() {
+    const style = getComputedStyle(hero);
+    const available = hero.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    name.style.fontSize = '100px';
+    const width = Math.max(...words.map(w => w.scrollWidth));
+    name.style.fontSize = `${Math.min(130, available / width * 99)}px`;
   }
-  const speedEl = root.querySelector('[data-hud="speed"]');
-  const gearEl = root.querySelector('[data-hud="gear"]');
-  const plates = q('[data-metal]');
-  const ptr = { x: 0.5, y: 0.5, cx: -9999, cy: -9999, t: 0 };
-  const FINE = matchMedia('(pointer: fine)').matches;
-  let lx = 0.5, lt = 0.5, v = 0, boost = 0, hw = 1000, gw = 400, lastGx = NaN, glint = null;
-  let lastY = scrollY, lastT = performance.now(), lastKmh = -1, lastLit = -1;
-  let timers = [];
+  fitName();
+  document.fonts?.ready.then(fitName);
+  new ResizeObserver(fitName).observe(hero);
 
-  q('.chrome-text').forEach(el => el.setAttribute('data-text', el.textContent));
-
-  // Which chrome surfaces are on screen (so the sweep only touches those).
-  let lastLxr = -1, nameOnScreen = true;
-  const chromeOnScreen = new Set();
-  if ('IntersectionObserver' in window) {
-    const cio = new IntersectionObserver(es => es.forEach(e => {
-      if (e.target === nameEl) nameOnScreen = e.isIntersecting;
-      else e.isIntersecting ? chromeOnScreen.add(e.target) : chromeOnScreen.delete(e.target);
-      lastLxr = -1;
-    }));
-    cio.observe(nameEl);
-    q('.chrome-text').forEach(el => cio.observe(el));
-  } else q('.chrome-text').forEach(el => chromeOnScreen.add(el));
-
-  function measure() {
-    // Fit the longest name line to the hero's content width (capped for very wide screens).
-    const cs = getComputedStyle(hero);
-    const avail = hero.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-    nameEl.style.setProperty('--name-size', '100px');
-    const lineW = Math.max(...q('[data-word]').map(c => c.scrollWidth));   // the two name lines only
-    const size = Math.max(24, Math.min(innerWidth > 760 ? 168 : 120, avail / lineW * 100 * 0.985));
-    root.style.setProperty('--name-size', size.toFixed(1) + 'px');
-    nameEl.style.removeProperty('--name-size');
-    hw = nameEl.offsetWidth;
-    gw = Math.round(hw * 0.64);                           // band is 48% of the name wide, plus room for its tilt
-    glintWin.style.width = gw + 'px';
-    glintTxt.style.width = hw + 'px';
-    lastGx = NaN;
+  // Start lights are brief and skippable. Content is never gated by WebGL readiness.
+  let introTimers = [], introActive = false;
+  const pods = all('[data-pod]');
+  function finishIntro() {
+    introTimers.forEach(clearTimeout); introTimers = [];
+    words.forEach(w => w.getAnimations().forEach(a => a.cancel()));
+    pods.forEach(p => p.classList.remove('on'));
+    introActive = false;
+    root.dataset.race = 'go'; root.dataset.intro = 'done';
+    $('[data-lights-label]').textContent = 'LIGHTS OUT';
+    emit('race:go'); emit('intro:done');
   }
-
-  // Moves each metal plate's highlight toward the pointer (CSS finish, when metal.js isn't drawing).
-  // On touch screens the sheen stays put: animating it forced a layout and repainted whole cards every
-  // frame, most of all while scrolling. Only plates on screen are touched.
-  const platesOnScreen = new Set();
-  if ('IntersectionObserver' in window) {
-    const pio = new IntersectionObserver(es => es.forEach(e => e.isIntersecting ? platesOnScreen.add(e.target) : platesOnScreen.delete(e.target)));
-    plates.forEach(p => pio.observe(p));
-  } else plates.forEach(p => platesOnScreen.add(p));
-  function updatePlates() {
-    const H = innerHeight;
-    plates.forEach(p => {
-      if (!platesOnScreen.has(p)) return;
-      const b = p.getBoundingClientRect();
-      if (b.bottom < 0 || b.top > H) return;
-      p.style.setProperty('--px', (ptr.cx - b.left) + 'px');
-      p.style.setProperty('--py', (ptr.cy - b.top) + 'px');
-    });
+  function race() {
+    introTimers.forEach(clearTimeout); introTimers = [];
+    if (isPaused()) return finishIntro();
+    root.dataset.race = ''; root.dataset.intro = 'live';
+    introActive = true; emit('race:reset');
+    pods.forEach(p => p.classList.remove('on'));
+    for (let i = 0; i < 5; i++) introTimers.push(setTimeout(() => {
+      all(`[data-pod="${i}"]`).forEach(p => p.classList.add('on'));
+      emit('race:light', i);
+    }, 90 + i * 150));
+    introTimers.push(setTimeout(() => {
+      finishIntro();
+      words.forEach((w, i) => w.animate([
+        { transform: 'translateX(28px)', opacity: .4 }, { transform: 'none', opacity: 1 }
+      ], { duration: 500, delay: i * 60, easing: 'cubic-bezier(.2,.8,.2,1)' }));
+    }, 1000));
   }
-
-  // ---------- scroll reveals ----------
-  function initReveals() {
-    const revs = q('[data-rev]');
-    if (reduce || !('IntersectionObserver' in window)) return;
-    revs.forEach(el => { el.style.opacity = '0'; });
-    const io = new IntersectionObserver(entries => {
-      let i = 0;
-      entries.forEach(en => {
-        if (!en.isIntersecting) return;
-        const el = en.target; io.unobserve(el);
-        el.style.opacity = '';
-        if (motionPaused()) return;
-        // transform + opacity only: both run on the compositor. (A blur() filter here re-filtered every
-        // revealing card on the GPU each frame, right while the page was scrolling.)
-        el.animate([
-          { opacity: 0, transform: 'translateX(140px) scaleX(1.25)' },
-          { opacity: 1, transform: 'translateX(-6px)', offset: 0.75 },
-          { opacity: 1, transform: 'none' }
-        ], { duration: 520, delay: (i++) * 70, easing: 'cubic-bezier(.12,.8,.2,1)', fill: 'backwards' });
-        boost = Math.max(boost, 60);
-      });
-    }, { threshold: 0.12, rootMargin: '0px 0px -6% 0px' });
-    revs.forEach(el => io.observe(el));
-  }
-
-  // ---------- start sequence ----------
-  const motionPaused = () => document.documentElement.dataset.motion === 'paused';
-  const pods = [0, 1, 2, 3, 4].map(i => q(`[data-pod="${i}"]`));
-  const lightsLabel = root.querySelector('[data-lights-label]');
-  const off = () => pods.flat().forEach(el => { el.style.background = '#2a0a08'; el.style.boxShadow = 'none'; });
-  let introLive = false;
-  // <html data-intro>: hold (lights waiting for the grid) -> live (intro playing) -> done. car.js and the
-  // staged start-up below keep heavy main-thread work out of `live`.
-  const setIntro = v => { document.documentElement.dataset.intro = v; if (v === 'done') dispatchEvent(new Event('intro:done')); };
-  // Replay Intro plays even with motion paused (it's an explicit request); page load doesn't.
-  function race(replay) {
-    timers.forEach(clearTimeout); timers = [];
-    letters.forEach(l => l.getAnimations().forEach(a => a.cancel()));
-    root.style.setProperty('--nameo', '0'); root.style.setProperty('--heroo', '0');
-    nameEl.removeAttribute('data-landed');
-    off();
-    lightsLabel.textContent = 'LIGHTS';
-    document.documentElement.dataset.race = 'reset';
-    dispatchEvent(new Event('race:reset'));
-    if (reduce || (motionPaused() && !replay)) { lightsLabel.textContent = 'LIGHTS OUT'; return land(false); }
-    introLive = true;
-    setIntro('live');
-    if (!CONFIG.startLights) { timers.push(setTimeout(fly, 150)); return; }
-    pods.forEach((p, i) => timers.push(setTimeout(() => {
-      p.forEach(el => { el.style.background = '#ff2415'; el.style.boxShadow = '0 0 18px 4px rgba(255,36,21,0.6), inset 0 -3px 6px rgba(0,0,0,0.35)'; });
-      boost = Math.max(boost, 20 + i * 12);
-      dispatchEvent(new CustomEvent('race:light', { detail: i }));
-    }, 150 + i * 190)));
-    timers.push(setTimeout(() => {
-      off(); lightsLabel.textContent = 'LIGHTS OUT';
-      fly();
-    }, 150 + 4 * 190 + 260 + Math.random() * 200));
-  }
-
-  // Name, stripe and meta in their final place; `animate` plays the landing flourish.
-  function land(animate) {
-    introLive = false;
-    setIntro('done');
-    root.style.setProperty('--nameo', '1'); root.style.setProperty('--heroo', '1');
-    nameEl.setAttribute('data-landed', '');
-    if (!animate) return;
-    const st = root.querySelector('[data-stripe]');
-    st.animate([{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }], { duration: 320, easing: 'cubic-bezier(.16,1,.3,1)' });
-    q('[data-heroin]').forEach((el, i) => el.animate([
-      { opacity: 0, transform: 'translateX(60px)', filter: 'blur(6px)' }, { opacity: 1, transform: 'none', filter: 'blur(0px)' }
-    ], { duration: 420, delay: i * 80, easing: 'cubic-bezier(.16,1,.3,1)', fill: 'backwards' }));
-    glint = performance.now();
-  }
-
-  // HIG Motion, "let people cancel motion": a scroll, tap, click or key press during the intro
-  // lands it at once instead of making people wait it out.
-  function skipIntro() {
-    if (!introLive) return;
-    timers.forEach(clearTimeout); timers = [];
-    letters.forEach(l => l.getAnimations().forEach(a => a.finish()));
-    root.querySelector('[data-streaks]').textContent = '';
-    if (document.documentElement.dataset.race !== 'go') {
-      off(); lightsLabel.textContent = 'LIGHTS OUT';
-      document.documentElement.dataset.race = 'go';
-      dispatchEvent(new Event('race:go'));
-    }
-    land(false);
-  }
-
-  function fly() {
-    const hb = hero.getBoundingClientRect();
-    const sc = root.querySelector('[data-streaks]');
-    const acc = getComputedStyle(root).getPropertyValue('--acc').trim() || '#2b7bff';
-    const step = 40, dur = 480;
-    const rects = letters.map(l => l.getBoundingClientRect());
-    root.style.setProperty('--nameo', '1');
-    boost = 330;
-    document.documentElement.dataset.race = 'go';
-    dispatchEvent(new Event('race:go'));
-    letters.forEach((l, i) => {
-      l.animate([
-        { transform: 'translateX(115vw) scaleX(3)', filter: 'blur(16px)', opacity: 0 },
-        { opacity: 1, offset: 0.1 },
-        { transform: 'translateX(-0.08em) scaleX(1.06)', filter: 'blur(1px)', opacity: 1, offset: 0.8 },
-        { transform: 'none', filter: 'blur(0px)', opacity: 1 }
-      ], { duration: dur, delay: i * step, easing: 'cubic-bezier(.1,.75,.2,1)', fill: 'backwards' });
-      const lb = rects[i], s = document.createElement('div');
-      s.style.cssText = `position:absolute;left:${lb.left - hb.left}px;right:0;top:${lb.top - hb.top + lb.height * (0.3 + Math.random() * 0.4)}px;height:${i % 3 ? 2 : 4}px;background:linear-gradient(90deg,${i % 2 ? '#ffffff' : acc},transparent 70%);box-shadow:0 0 12px ${acc};transform-origin:0 50%;`;
-      sc.appendChild(s);
-      const a = s.animate([
-        { transform: 'translateX(100%)', opacity: 1 },
-        { transform: 'translateX(0)', opacity: 0.9, offset: 0.6 },
-        { transform: 'translateX(0) scaleX(0.05)', opacity: 0 }
-      ], { duration: dur, delay: i * step, easing: 'cubic-bezier(.1,.75,.2,1)', fill: 'both' });
-      a.onfinish = () => s.remove();
-    });
-    const end = (letters.length - 1) * step + dur;
-    timers.push(setTimeout(() => land(true), end - 120));
-  }
-
-  // ---------- frame loop: speedo, rev LEDs, chrome glint ----------
-  function loop(t) {
-    requestAnimationFrame(loop);
-    const y = scrollY;
-    const dt = Math.max(1, t - lastT);
-    const inst = Math.min(20, Math.abs(y - lastY) / dt);
-    lastY = y; lastT = t;
-    v += (inst - v) * 0.12;
-    boost *= 0.982;
-    const kmh = Math.min(350, v * 210 + boost);
-    const k = Math.round(kmh);
-    if (k !== lastKmh) {
-      lastKmh = k;
-      speedEl.textContent = String(k).padStart(3, '0');
-      gearEl.textContent = k < 4 ? 'N' : String(Math.min(8, 1 + Math.floor(k / 44)));
-    }
-    const lit = Math.round(Math.min(1, kmh / 330) * leds.length);
-    if (lit !== lastLit) {
-      lastLit = lit;
-      leds.forEach((el, i) => el.classList.toggle('on', i < lit));
-    }
-    window.__speed = kmh;
-    let target;
-    if (glint) {
-      const p = (t - glint) / 850;
-      if (p >= 1) glint = null; else { target = -0.25 + p * 1.5; lx = target; }
-    }
-    const pointing = ptr.t !== 0 && t - ptr.t <= 2600;
-    if (target == null) {
-      const still = reduce || document.documentElement.dataset.motion === 'paused';
-      target = pointing ? ptr.x : (still ? 0.5 : 0.5 + 0.42 * Math.sin(t / 1600));
-      target += Math.sin(y / 600) * 0.12;
-      lx += (target - lx) * 0.14;
-    }
-    // Name glint: two transforms, no repaint.
-    const gx = Math.round((lx * hw - gw / 2) * 2) / 2;
-    if (nameOnScreen && gx !== lastGx) {
-      lastGx = gx;
-      glintWin.style.transform = `translate3d(${gx}px,0,0)`;
-      glintTxt.style.transform = `translate3d(${-gx}px,0,0)`;
-    }
-    // Section titles keep a paint-based sweep, so it moves only with a real pointer (never on idle or
-    // scroll, when a repaint per frame would cost smoothness) and only while it visibly changes.
-    lt += ((FINE && pointing ? ptr.x : 0.5) - lt) * 0.14;
-    const lxr = Math.max(0, Math.min(1, 1 - lt));
-    if (chromeOnScreen.size && Math.abs(lxr - lastLxr) > 0.0015) {
-      lastLxr = lxr;
-      const v = lxr.toFixed(4);
-      chromeOnScreen.forEach(el => el.style.setProperty('--lxr', v));
-    }
-    // CSS plate highlight only matters when metal.js isn't drawing the plates.
-    // The idle drift is slow (period ~10 s), so 20 Hz updates are visually identical and cost a third.
-    if (inst > 0 && FINE && ptr.t !== 0 && !document.documentElement.classList.contains('metal-gl')) updatePlates();
-  }
-
-  // ---------- wiring ----------
-  const rebuild = () => { measure(); buildRedline(); };
-  addEventListener('resize', rebuild);
-  addEventListener('pointermove', e => {
-    ptr.x = e.clientX / innerWidth; ptr.y = e.clientY / innerHeight;
-    ptr.cx = e.clientX; ptr.cy = e.clientY; ptr.t = performance.now();
-    if (FINE && !document.documentElement.classList.contains('metal-gl')) updatePlates();
-  }, { passive: true });
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(rebuild);
-
-  q('a[href^="#"]').forEach(a => a.addEventListener('click', e => {
-    const href = a.getAttribute('href');
-    const el = document.getElementById(href.slice(1));
-    if (!el) return;
-    e.preventDefault();
-    scrollTo({ top: el.getBoundingClientRect().top + scrollY - (href === '#top' ? 0 : 60), behavior: reduce ? 'auto' : 'smooth' });
-    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
-    el.focus({ preventScroll: true });
-    history.replaceState(null, '', href);
-  }));
-  // ---------- pause motion (WCAG 2.2.2): stops the smoke, turntable and moving lights ----------
-  const motionBtn = root.querySelector('[data-motion]');
-  const setMotion = paused => {
-    document.documentElement.dataset.motion = paused ? 'paused' : 'running';
-    motionBtn.setAttribute('aria-pressed', String(paused));
-    motionBtn.querySelector('[data-motion-label]').textContent = paused ? 'Play Motion' : 'Pause Motion';
-    try { localStorage.setItem('motion', paused ? 'paused' : 'running'); } catch (e) {}
-    dispatchEvent(new CustomEvent('motion:toggle', { detail: { paused } }));
-  };
-  setMotion(document.documentElement.dataset.motion === 'paused');
-  motionBtn.addEventListener('click', () => setMotion(motionBtn.getAttribute('aria-pressed') !== 'true'));
-
-  // ---------- telemetry: counts come from the content itself, so they can't drift ----------
-  const counts = { stints: q('.stint').length, degrees: q('.degree').length, langs: q('.lang').length, skills: q('.skill').length };
-  q('[data-count]').forEach(el => { el.textContent = String(counts[el.dataset.count] ?? el.textContent).padStart(2, '0'); });
-
-  // ---------- radio waveform: bars with a speech-like envelope (static heights, CSS animates) ----------
-  q('[data-wave]').forEach(w => {
-    const n = innerWidth < 600 ? 36 : 56;
-    for (let i = 0; i < n; i++) {
-      const b = document.createElement('i'), x = i / (n - 1);
-      const env = 0.35 + 0.65 * Math.pow(Math.sin(Math.PI * x), 0.7) * (0.6 + 0.4 * Math.sin(x * 19.3));
-      b.style.cssText = `--lv:${Math.max(.18, env).toFixed(2)};--lo:${(0.08 + 0.1 * ((i * 7) % 5) / 5).toFixed(2)};--d:${520 + ((i * 37) % 9) * 60}ms;--dl:${-((i * 113) % 900)}ms`;
-      w.appendChild(b);
-    }
-  });
-
-  // ---------- mobile menu ----------
-  const menuBtn = root.querySelector('[data-menu]');
-  const menu = document.getElementById(menuBtn.getAttribute('aria-controls'));
-  const setMenu = open => {
-    menuBtn.setAttribute('aria-expanded', String(open));
-    menu.classList.toggle('open', open);
-  };
-  menuBtn.addEventListener('click', () => setMenu(menuBtn.getAttribute('aria-expanded') !== 'true'));
-  menu.addEventListener('click', e => { if (e.target.closest('a')) setMenu(false); });
-  addEventListener('keydown', e => {
-    if (e.key === 'Escape' && menuBtn.getAttribute('aria-expanded') === 'true') { setMenu(false); menuBtn.focus(); }
-  });
-  addEventListener('pointerdown', e => {
-    if (!e.target.closest('.nav-menu')) setMenu(false);
-  });
-
-  // ---------- language shift lights: light up in sequence when revealed ----------
-  q('.leds').forEach(box => {
-    const level = Number(box.dataset.level);
-    for (let i = 0; i < 12; i++) box.appendChild(document.createElement('i'));
-    const dots = Array.from(box.children);
-    const fill = () => dots.forEach((d, i) => {
-      if (i >= level) return;
-      if (reduce) d.classList.add('on');
-      else setTimeout(() => d.classList.add('on'), 250 + i * 55);
-    });
-    if (reduce || !('IntersectionObserver' in window)) return fill();
-    const io = new IntersectionObserver(([en]) => { if (en.isIntersecting) { io.disconnect(); fill(); } }, { threshold: 0.6 });
-    io.observe(box);
-  });
-
-  root.querySelector('[data-replay]').addEventListener('click', () => {
-    scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
-    race(true);
-  });
-  // Any real input cancels the intro. (Not `scroll`: Replay Intro scrolls to the top itself.)
-  // The document-level touchstart listener is also what lets iOS Safari apply :active press states.
+  const skipIntro = () => { if (introActive) finishIntro(); };
   addEventListener('wheel', skipIntro, { passive: true });
-  addEventListener('pointerdown', skipIntro);
-  document.addEventListener('touchstart', skipIntro, { passive: true });
-  addEventListener('keydown', e => { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) skipIntro(); });
-
-  // ---------- staged start-up: the grid forms before the lights go on ----------
-  // Each WebGL layer compiles shaders, builds geometry and uploads textures once, which is hundreds of
-  // ms of main-thread work on a slow phone. It all happens while the start lights hold (the name's
-  // silhouette and the job title are already on screen): car first, then the smoke, one at a time.
-  // The intro then plays on a quiet main thread. If the grid isn't ready by GRID_CAP the intro starts
-  // anyway and whatever is still loading waits until it has landed. The metal plates (desktop only;
-  // phones keep the CSS finish) are below the fold, so they start after the intro.
-  const GRID_CAP = 2600;                                   // ms from navigation start
-  const phone = matchMedia('(max-width: 760px), (pointer: coarse)').matches;
-  const idle = f => ('requestIdleCallback' in window ? requestIdleCallback(f, { timeout: 1500 }) : setTimeout(f, 200));
-  const wait = ms => new Promise(r => setTimeout(r, Math.max(0, ms)));
-  const once = ev => new Promise(r => addEventListener(ev, r, { once: true }));
-  const carReady = once('car:ready'), windReady = once('wind:ready'), introDone = once('intro:done');
-  let gridGo;
-  const gridStart = new Promise(r => { gridGo = r; });     // settles once the hold ends (lights on, or skipped)
-  const load = (src, readyEvent) => import(src).catch(err => {
-    console.warn('[pk] optional layer failed:', src, err);
-    if (readyEvent) dispatchEvent(new Event(readyEvent));   // a missing layer never holds the lights
+  addEventListener('pointerdown', skipIntro, { passive: true });
+  addEventListener('keydown', skipIntro);
+  $('[data-replay]').addEventListener('click', () => {
+    scrollTo({ top: 0, behavior: 'instant' }); race();
   });
-  const hint = (rel, href) => {
-    const l = document.createElement('link');
-    l.rel = rel; l.href = href;
-    document.head.appendChild(l);
-  };
-  requestAnimationFrame(() => setTimeout(() => {
-    // After the first paint, so none of this competes with the page's own CSS and fonts. The three.js
-    // bundle downloads alongside car.js (not after it), and ahead of the model: car.js starts the model
-    // and decoder downloads as soon as it runs, which on a slow connection is still during the hold.
-    hint('modulepreload', 'vendor/three-car.min.js');
-    hint('modulepreload', 'windtunnel.js');
-    load('./car.js', 'car:ready');
-    Promise.race([carReady, gridStart])
-      .then(() => (document.documentElement.dataset.intro === 'live' ? introDone : null))
-      .then(() => idle(() => load('./windtunnel.js', 'wind:ready')));
-    if (!phone) introDone.then(() => Promise.race([windReady, wait(4000)])).then(() => idle(() => load('./metal.js')));
-  }, 0));
 
-  measure();
-  buildRedline();
-  initReveals();
-  requestAnimationFrame(loop);
-  if (reduce || motionPaused()) { race(); gridGo(); }       // static hero: lands at once
-  else {
-    introLive = true;                                      // a tap, scroll or key during the hold lands it
-    setIntro('hold');
-    Promise.race([Promise.all([carReady, windReady]), wait(GRID_CAP - performance.now()), introDone])
-      .then(() => { if (document.documentElement.dataset.intro === 'hold') race(); gridGo(); });
+  function setMotion(requestedPause, persist = true) {
+    if (persist) userPaused = requestedPause;
+    const paused = userPaused || media.matches;
+    root.dataset.motion = paused ? 'paused' : 'running';
+    motionButton.setAttribute('aria-pressed', String(paused));
+    $('[data-motion-label]').textContent = paused ? 'Play motion' : 'Pause motion';
+    if (persist) try { localStorage.setItem('motion', userPaused ? 'paused' : 'running'); } catch {}
+    if (paused) skipIntro();
+    resetHolo();
+    emit('motion:toggle', { paused });
   }
+  motionButton.addEventListener('click', () => setMotion(!isPaused()));
+  media.addEventListener('change', () => {
+    setMotion(userPaused, false);
+    motionButton.disabled = media.matches;
+  });
+
+  // Telemetry: green -> yellow -> red as scroll velocity approaches the rev limiter.
+  const leds = Array.from({ length: 48 }, (_, i) => {
+    const el = document.createElement('i');
+    if (i >= 32) el.className = 'r'; else if (i >= 16) el.className = 'y';
+    $('[data-redline]').appendChild(el); return el;
+  });
+  const hud = $('.hud'), speed = $('[data-hud="speed"]'), gear = $('[data-hud="gear"]');
+  const digitHost = $('[data-hud-digits]');
+  const segmentShapes = [
+    ['a', 'M5 1H19L16 5H8Z'], ['b', 'M21 4L23 7V18L20 20L18 18V8Z'],
+    ['c', 'M20 21L23 23V34L20 37L18 34V23Z'], ['d', 'M5 39H19L16 35H8Z'],
+    ['e', 'M4 21L6 23V34L4 37L1 34V23Z'], ['f', 'M4 4L6 7V18L4 20L1 18V7Z'],
+    ['g', 'M5 20L8 18H16L19 20L16 22H8Z'],
+  ];
+  const segmentStates = ['abcdef', 'bc', 'abdeg', 'abcdg', 'bcfg', 'acdfg', 'acdefg', 'abc', 'abcdefg', 'abcdfg'];
+  const digitPaths = Array.from({ length: 3 }, () => {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 40');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    const paths = segmentShapes.map(([, shape]) => {
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', shape);
+      svg.appendChild(path);
+      return path;
+    });
+    digitHost.appendChild(svg);
+    return paths;
+  });
+  let previousDigits = '---';
+  function renderSpeed(value) {
+    const next = String(value).padStart(3, '0');
+    speed.textContent = next;
+    for (let i = 0; i < digitPaths.length; i++) {
+      if (next[i] === previousDigits[i]) continue;
+      const active = segmentStates[Number(next[i])];
+      digitPaths[i].forEach((path, index) => path.classList.toggle('on', active.includes(segmentShapes[index][0])));
+    }
+    previousDigits = next;
+  }
+  renderSpeed(0);
+  digitHost.hidden = false;
+  digitHost.parentElement.classList.add('is-segmented');
+  let uiFrame = 0, lastY = scrollY, lastScroll = performance.now(), previousFrame = 0;
+  let targetSpeed = 0, currentSpeed = 0, lastSpeed = -1, lastLit = -1, pageHeight = 1;
+  function pageSize() { pageHeight = Math.max(1, document.documentElement.scrollHeight - innerHeight); }
+  new ResizeObserver(pageSize).observe(document.body); pageSize();
+  function telemetry(t) {
+    uiFrame = 0;
+    const dt = Math.min(64, t - (previousFrame || t - 16)); previousFrame = t;
+    if (t - lastScroll > 70) targetSpeed *= Math.exp(-dt / 150);
+    currentSpeed += (targetSpeed - currentSpeed) * (1 - Math.exp(-dt / 65));
+    if (targetSpeed < .1 && currentSpeed < .5) currentSpeed = targetSpeed = 0;
+    const k = Math.round(currentSpeed);
+    if (k !== lastSpeed) {
+      lastSpeed = k; renderSpeed(k);
+      gear.textContent = k < 4 ? 'N' : String(Math.min(8, 1 + Math.floor(k / 44)));
+      const band = k > 265 ? 'limit' : k > 140 ? 'push' : 'cruise';
+      if (hud.dataset.band !== band) {
+        hud.dataset.band = band;
+        $('[data-hud="mode"]').textContent = band === 'limit' ? 'REV LIMIT' : band === 'push' ? 'PUSH LAP' : 'SCROLL TO ACCELERATE';
+      }
+      const lit = Math.round(k / 350 * leds.length);
+      if (lit !== lastLit) {
+        const first = Math.min(Math.max(0, lastLit), lit), end = Math.max(lastLit, lit);
+        for (let i = first; i < end; i++) leds[i].classList.toggle('on', i < lit);
+        lastLit = lit;
+      }
+    }
+    window.__speed = currentSpeed;
+    $('[data-progress]').style.transform = `scaleX(${Math.min(1, Math.max(0, scrollY / pageHeight))})`;
+    if (currentSpeed || targetSpeed) uiFrame = requestAnimationFrame(telemetry);
+  }
+  function wakeTelemetry() { if (!uiFrame && !document.hidden) uiFrame = requestAnimationFrame(telemetry); }
+  addEventListener('scroll', () => {
+    const now = performance.now();
+    targetSpeed = Math.min(350, Math.abs(scrollY - lastY) / Math.max(8, now - lastScroll) * 170);
+    lastY = scrollY; lastScroll = now; wakeTelemetry();
+  }, { passive: true });
+  wakeTelemetry();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { cancelAnimationFrame(uiFrame); uiFrame = 0; }
+    else { lastY = scrollY; lastScroll = performance.now(); currentSpeed = targetSpeed = 0; wakeTelemetry(); }
+  });
+
+  // Navigation: native section anchors plus focus transfer and an accurate current-section state.
+  const menuButton = $('[data-menu]'), menu = $('#nav-links');
+  function setMenu(open) { menuButton.setAttribute('aria-expanded', String(open)); menu.classList.toggle('open', open); }
+  menuButton.addEventListener('click', () => setMenu(menuButton.getAttribute('aria-expanded') !== 'true'));
+  addEventListener('keydown', e => { if (e.key === 'Escape' && menu.classList.contains('open')) { setMenu(false); menuButton.focus(); } });
+  addEventListener('pointerdown', e => { if (!e.target.closest('.nav-menu')) setMenu(false); });
+  all('a[href^="#"]').forEach(a => a.addEventListener('click', e => {
+    const el = document.getElementById(a.hash.slice(1)); if (!el) return;
+    e.preventDefault(); setMenu(false);
+    const top = a.hash === '#top' ? 0 : el.getBoundingClientRect().top + scrollY - $('.nav').offsetHeight - 32;
+    scrollTo({ top, behavior: isPaused() ? 'instant' : 'smooth' });
+    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+    el.focus({ preventScroll: true }); history.replaceState(null, '', a.hash);
+  }));
+  const navLinks = all('.nav-links a'), sections = all('main>section');
+  const active = new Map();
+  const sectionObserver = new IntersectionObserver(entries => {
+    entries.forEach(e => active.set(e.target.id, e.isIntersecting));
+    const id = sections.find(s => active.get(s.id))?.id;
+    navLinks.forEach(a => { if (a.hash === `#${id}`) a.setAttribute('aria-current', 'location'); else a.removeAttribute('aria-current'); });
+  }, { rootMargin: '-18% 0px -55% 0px', threshold: 0 });
+  sections.forEach(s => sectionObserver.observe(s));
+
+  const counts = { stints: all('.stint').length, degrees: all('.degree').length, langs: all('.lang').length, skills: all('.skill').length };
+  all('[data-count]').forEach(el => el.textContent = String(counts[el.dataset.count]).padStart(2, '0'));
+  all('.leds').forEach(box => { for (let i = 0; i < 12; i++) { const d = document.createElement('i'); if (i < +box.dataset.level) d.className = 'on'; box.appendChild(d); } });
+
+  // Holographic card. Cached geometry, one update per frame, no idle animation or global mouse handler.
+  const card = $('[data-holo]');
+  let cardRect, holoFrame = 0, mx = .5, my = .35;
+  let activeTouchId = null, touchStartX = 0, touchStartY = 0;
+  function resetHolo() {
+    if (!card) return;
+    activeTouchId = null;
+    cancelAnimationFrame(holoFrame); holoFrame = 0;
+    card.classList.remove('is-tracking');
+    ['--rx', '--ry', '--mx', '--my'].forEach(p => card.style.removeProperty(p));
+  }
+  card.addEventListener('pointerenter', () => { cardRect = card.parentElement.getBoundingClientRect(); });
+  card.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'touch' || isPaused()) return;
+    activeTouchId = e.pointerId;
+    touchStartX = e.clientX; touchStartY = e.clientY;
+    cardRect = card.parentElement.getBoundingClientRect();
+  }, { passive: true });
+  card.addEventListener('pointermove', e => {
+    if (isPaused()) return;
+    if (e.pointerType === 'touch') {
+      if (activeTouchId !== e.pointerId) return;
+      const dx = e.clientX - touchStartX, dy = e.clientY - touchStartY;
+      if (Math.abs(dx) <= Math.abs(dy)) { if (holoFrame || card.classList.contains('is-tracking')) resetHolo(); return; }
+      if (Math.abs(dx) < 5) return;
+    } else if (!fine.matches) return;
+    cardRect ||= card.parentElement.getBoundingClientRect();
+    mx = Math.max(0, Math.min(1, (e.clientX - cardRect.left) / cardRect.width));
+    my = Math.max(0, Math.min(1, (e.clientY - cardRect.top) / cardRect.height));
+    if (!holoFrame) holoFrame = requestAnimationFrame(() => {
+      holoFrame = 0; card.classList.add('is-tracking');
+      card.style.setProperty('--rx', `${(0.5 - my) * 12}deg`);
+      card.style.setProperty('--ry', `${(mx - 0.5) * 16}deg`);
+      card.style.setProperty('--mx', `${mx * 100}%`); card.style.setProperty('--my', `${my * 100}%`);
+    });
+  }, { passive: true });
+  card.addEventListener('pointerup', e => { if (e.pointerType === 'touch' && e.pointerId === activeTouchId) resetHolo(); });
+  card.addEventListener('pointerleave', resetHolo); card.addEventListener('pointercancel', resetHolo);
+  addEventListener('scroll', () => {
+    cardRect = null;
+    if (holoFrame || activeTouchId !== null || card.classList.contains('is-tracking')) resetHolo();
+  }, { passive: true });
+  addEventListener('resize', () => { cardRect = null; resetHolo(); });
+
+  // Progressive 3D enhancement. A lightweight poster covers loading and unsupported GPUs.
+  addEventListener('car:ready', () => {
+    const ok = $('[data-car]')?.classList.contains('ready');
+    if ($('[data-car]')) {
+      $('[data-car]').tabIndex = ok ? 0 : -1;
+      $('[data-car]').setAttribute('aria-hidden', String(!ok));
+    }
+    if (ok) $('[data-car-poster]').hidden = true;
+  });
+  addEventListener('car:unavailable', () => {
+    $('[data-car-poster]').hidden = false;
+    if ($('[data-car]')) { $('[data-car]').tabIndex = -1; $('[data-car]').setAttribute('aria-hidden', 'true'); }
+  });
+  const connection = navigator.connection;
+  const conserveData = connection?.saveData || /^(slow-2g|2g)$/.test(connection?.effectiveType || '');
+  if (conserveData) $('[data-car]').setAttribute('aria-hidden', 'true');
+  if (!conserveData) requestAnimationFrame(() => {
+    const link = document.createElement('link'); link.rel = 'modulepreload'; link.href = 'vendor/three-car.min.js'; document.head.appendChild(link);
+    import('./car.js').catch(err => console.warn('[pk] showing the car poster:', err));
+  });
+
+  // The script is at the end of the body. Font metrics are the only remaining layout
+  // dependency; below-fold images should not hold the tunnel on slow connections.
+  Promise.resolve(document.fonts?.ready).then(() => {
+    root.dataset.airflow = 'starting';
+    import('./windtunnel.js').then(() => { root.dataset.airflow = 'ready'; }).catch(err => console.warn('[pk] permanent wind fallback:', err));
+  });
+  root.dataset.effects = 'full';
+  setMotion(userPaused, false);
+  motionButton.disabled = media.matches;
+  // A fresh visit opens on the finished hero. The start lights remain a deliberate replay
+  // interaction, rather than firing while fonts, textures and the car are still swapping in.
+  finishIntro();
 })();

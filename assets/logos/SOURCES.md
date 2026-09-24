@@ -14,3 +14,11 @@ For each org, `*-white.png` and `*-color.png` are 2048px rasters of the original
 | `hkn-*.png` | Most likely [File:Eta Kappa Nu badge.png](https://commons.wikimedia.org/wiki/File:Eta_Kappa_Nu_badge.png) | Public domain (Commons) | Inferred |
 
 The car livery textures in `assets/car/logo-*.webp` are derived from the white versions above.
+
+## Original Pranav identity
+
+`pk-monogram.svg` is an original forward-leaning **PK** monogram drawn for this portfolio, not a Formula 1 or team trademark. `pk-monogram-white.png` is its transparent raster for Blender; `assets/car/logo-pk-monogram.webp` is the livery derivative. The same mark is used in the site header.
+
+The holographic portrait uses Pranav's supplied photograph, `assets/pranav.webp`, without a generated racing outfit or helmet.
+
+The display face is the project's original PK Wide. Titillium Web and JetBrains Mono are bundled under their SIL Open Font Licenses in `assets/fonts/`.

@@ -1,12 +1,13 @@
 """
-Installs the Formula1 typefaces into the site.
+Prepares an optional local Formula1 font stylesheet from files you are licensed to use.
 
 Usage (from the repo root):
     python3 tools/install_f1_fonts.py ~/Downloads/formula1-fonts.zip    # or a folder of .ttf/.otf files
 
 Finds the Regular, Bold, Black, Italic and Wide cuts by file name, converts each to WOFF2 in
-assets/fonts/, and rewrites assets/fonts/f1.css so the site switches its display and text
-tokens over to the Formula1 family. Needs fonttools + brotli (pip install fonttools brotli).
+assets/fonts/, and writes assets/fonts/f1.css. To use it locally, link that stylesheet
+after refinements.css in index.html. Do not publish the generated font files without
+web-use and redistribution permission. Needs fonttools + brotli (pip install fonttools brotli).
 """
 import io, os, re, sys, zipfile
 from fontTools.ttLib import TTFont
@@ -62,7 +63,7 @@ def main(src):
         for out, (fam, wt, st) in done.items())
     display = "'Formula1 Wide'" if 'Formula1-Wide' in done else "'Formula1'"
     tokens = (":root {\n"
-              f"  --display: {display}, 'Anybody', sans-serif;\n"
+              f"  --display: {display}, 'PK Wide', sans-serif;\n"
               "  --text: 'Formula1', 'Titillium Web', sans-serif;\n  --wide: 100;\n  --wide-mid: 100;\n"
               f"  --display-style: {'italic' if 'Formula1-Italic' in done and 'Formula1-Wide' not in done else 'normal'};\n"
               "}\n")

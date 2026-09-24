@@ -12,7 +12,7 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
 3. **Custom F1 font:**
    - Draw an original typeface in the spirit of Formula1 Display Wide: extended, flat-sided rounds, squared counters, low contrast, upright and italic.
    - Build it as a real font (fontTools/FontForge, or glyphs drawn in code) at `assets/fonts/pk-wide.woff2` with the A–Z, 0–9 and punctuation the site uses.
-   - Wire it to `--display`. The official Formula1 fonts are licensed and couldn't be downloaded (bot check); `tools/install_f1_fonts.py` swaps them in if Adam provides the ZIP.
+   - Wire it to `--display`. The official Formula1 fonts are licensed; `tools/install_f1_fonts.py` can prepare an optional local override only when web-use rights are confirmed.
 4. **F1 car to near 1:1 with a real car:** keep iterating `blender/build_car.py` against reference photos and dimensions of a real 2024–25 car (Williams FW46 in blue and black is the best reference). Proportions first, then surfacing, then detail. Aim for a beautiful original livery with properly sized logos, and soft-plus-hard studio lighting.
 5. **Texture quality everywhere:** (2× DPR pass 2026-09-23: logos, type, metal and portrait are crisp; the car backdrop was beige and is now cool navy. Suspension members now use 28-segment profiles and the GLB stores normals at 11 bits, so the banding is gone.) no visible tiling, banding, aliasing, blur or stretching on the car, metal cards, smoke sprites, logos or portrait. Check each at 2× DPR.
 
@@ -90,7 +90,7 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
   - an OpenType kern feature with about 40 pairs (AV/VA/TY/LT, punctuation after diagonals), verified in Brave (AVA 310 → 293 px)
   - italic flag fixed
 - **Rear-wing endplates:** J.B. Hunt (0.48 m) and the Georgia Tech wordmark (0.46 m) are sized to the plate, legible at hero scale, and checked in a Cycles close-up.
-- **Custom font:** PK Wide, an original extended display face with regular and italic, about 2 KB each (`tools/build_font.py`). It's now the site's display font; the official Formula1 fonts can still be swapped in via `tools/install_f1_fonts.py`.
+- **Custom font:** PK Wide, an original extended display face with regular and italic, about 2 KB each (`tools/build_font.py`). It's the site's published display font. An authorized Formula1 font can be prepared for local use with `tools/install_f1_fonts.py`.
 - **Wind tunnel:** switched to a fixed-timestep solver. Desktop now holds 59–60 fps with p99 frame time 16.8 ms, and the shaking is gone.
 - **Performance:**
   - WebGL layers start in stages after first paint, and phones skip the WebGL metal.

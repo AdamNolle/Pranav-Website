@@ -24,11 +24,10 @@
   --dim: #cfd6e0;
   --rule: rgba(190,210,240,0.12);
   --mono: 'JetBrains Mono', 'Mono Fallback', monospace;
-  /* assets/fonts/f1.css overrides these three with the Formula1 family when installed. */
   --display: 'PK Wide', sans-serif;
   --text: 'Titillium Web', 'Titillium Fallback', sans-serif;
   --display-style: normal;
-  /* Width axis for variable display faces (the Formula1 fonts, if installed); PK Wide is drawn wide. */
+  /* PK Wide is drawn wide. */
   --wide: 150;
   --wide-mid: 130;
   --ease: cubic-bezier(.2,.9,.2,1);
@@ -90,15 +89,7 @@ a:hover { color: var(--acc-glow); }
   background-repeat: no-repeat, repeat-y;
   background-position: calc(var(--lxr, 0.5) * 100%) 0, 0 0;
   -webkit-background-clip: text; background-clip: text; color: transparent;
-  position: relative;   /* no z-index/isolation: the shadow copy must sit behind, in the section's context */
-}
-/* The drop shadow lives on a static copy of the text behind the chrome (data-text, set by main.js).
-   A filter on the chrome itself forced a re-raster + blur of every headline each time the sweep
-   moved; this layer never changes, so the browser rasterizes it once. Same look. */
-.chrome-text[data-text]::after {
-  content: attr(data-text); position: absolute; inset: 0; z-index: -1; pointer-events: none;
-  padding: inherit; color: transparent; -webkit-text-fill-color: transparent;
-  text-shadow: 0 1px 0 rgba(255,255,255,0.08), 0 18px 28px rgba(0,0,0,0.75);
+  position: relative;
 }
 
 .section-title {
@@ -199,20 +190,30 @@ a:hover { color: var(--acc-glow); }
   position: fixed; top: 0; left: 0; right: 0; z-index: 45; pointer-events: none;
   display: flex; justify-content: space-between; align-items: center; gap: 3px;
   height: 12px; padding: 0 clamp(8px,1.2vw,16px);
-  background: linear-gradient(180deg, #030405, #0a0c10);
-  box-shadow: inset 0 -1px 0 rgba(190,210,240,0.08), 0 4px 14px -6px #000;
+  background: linear-gradient(180deg, #040506, #14191d 48%, #080a0c);
+  box-shadow: inset 0 1px 0 #6e7b8433, inset 0 -1px 0 #000, 0 4px 14px -6px #000;
 }
 .redline i {
-  --c: #35ff75; flex: 1 1 0; max-width: 22px; height: 6px; border-radius: 3px;
-  background: linear-gradient(180deg, #1a1e25, #0e1116);
-  box-shadow: inset 0 1px 1px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.04);
-  transition: background 60ms linear, box-shadow 60ms linear;
+  --c: #4de385; position: relative; flex: 1 1 0; max-width: 22px; height: 8px;
+  border: 1px solid #030607; border-radius: 2px;
+  background: linear-gradient(180deg, #293238, #090d10 42%, #040607);
+  box-shadow: inset 0 1px 1px #000, 0 1px 0 #75838b66;
 }
-.redline i.r { --c: #ff3b2f; }
-.redline i.b { --c: #4d8dff; }
-.redline i.on {
-  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 45%, #fff), var(--c) 55%, color-mix(in srgb, var(--c) 60%, #000));
-  box-shadow: 0 0 8px 1px color-mix(in srgb, var(--c) 65%, transparent), 0 0 22px 2px color-mix(in srgb, var(--c) 25%, transparent);
+.redline i::before {
+  content: ''; position: absolute; inset: 1px; border-radius: 1px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 22%, #374043), color-mix(in srgb, var(--c) 8%, #111618) 75%);
+  box-shadow: inset 0 1px 1px #000a;
+}
+.redline i::after {
+  content: ''; position: absolute; top: 1px; left: 2px; right: 2px; height: 1px;
+  background: #f3fafb30; pointer-events: none;
+}
+.redline i.y { --c: #f4c84b; }
+.redline i.r { --c: #f45b4e; }
+.redline i.on::before {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 44%, #fff) 0%, var(--c) 45%, color-mix(in srgb, var(--c) 64%, #19120d));
+  box-shadow: inset 0 1px 0 #fff8, inset 0 -1px 1px #0008,
+    0 0 5px color-mix(in srgb, var(--c) 53%, transparent), 0 0 9px color-mix(in srgb, var(--c) 18%, transparent);
 }
 .nav { top: 12px; }
 
@@ -339,12 +340,6 @@ a:hover { color: var(--acc-glow); }
   transform: translateX(-50%);
   filter: drop-shadow(0 0 1px rgba(127,176,255,0.7)) drop-shadow(-6px -4px 18px rgba(43,123,255,0.35)) contrast(1.04) saturate(0.96);
 }
-.portrait-number {
-  position: absolute; right: 16px; top: 10px; z-index: 0;
-  font-family: var(--display); font-style: var(--display-style); font-weight: 900; font-variation-settings: 'wdth' var(--wide);
-  font-size: clamp(90px,12vw,170px); line-height: 1; color: transparent;
-  -webkit-text-stroke: 1px rgba(127,176,255,0.35);
-}
 .portrait-caption { display: flex; justify-content: space-between; gap: 12px; padding: 12px 8px 4px; letter-spacing: 0.12em; }
 .driver-body { display: grid; gap: clamp(32px,4vw,48px); container-type: inline-size; }
 .quote { margin: 0; font-weight: 500; font-size: min(clamp(1.5rem, 0.9rem + 1.6vw, 2.375rem), 13vw); line-height: 1.22; text-wrap: pretty; color: var(--fg-hi); }
@@ -392,20 +387,31 @@ a:hover { color: var(--acc-glow); }
 .lang { display: grid; gap: 8px; }
 .lang-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .lang-head b { font-weight: 600; font-size: 1.125rem; }
-/* Shift-light LEDs, same sequence as the steering-wheel HUD: green, red, blue. */
-.leds { display: grid; grid-template-columns: repeat(12, minmax(0, 16px)); justify-content: space-between; gap: 4px; padding: 6px 10px; border-radius: 999px;
-  background: linear-gradient(180deg, #07090c, #10141a); box-shadow: inset 0 1px 3px rgba(0,0,0,0.9), 0 1px 0 rgba(255,255,255,0.06); }
+/* Smoked lenses sit in separate sockets; the light is brightest under the curved glass. */
+.leds { display: grid; grid-template-columns: repeat(12, minmax(0, 18px)); justify-content: space-between; gap: 4px; padding: 6px 10px; border: 1px solid #343e43; border-radius: 999px;
+  background: linear-gradient(180deg, #080b0e 0%, #111920 48%, #192127 100%);
+  box-shadow: inset 0 2px 5px #000e, inset 0 -1px 0 #72828a55, 0 1px 0 #d5e5f00c; }
 .leds i {
-  --c: #35ff75; aspect-ratio: 1; border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #2a2f38, #0d1015 70%);
-  box-shadow: inset 0 1px 1px rgba(255,255,255,0.08), inset 0 -1px 2px rgba(0,0,0,0.8);
+  --c: #4de385; position: relative; aspect-ratio: 1; border: 1px solid #050708; border-radius: 50%;
+  background: linear-gradient(145deg, #3a464b, #0a1012 42%, #030507 78%);
+  box-shadow: inset 0 1px 2px #000, 0 1px 0 #9aabb44d;
+}
+.leds i::before {
+  content: ''; position: absolute; inset: 1px; border-radius: 50%;
+  background: radial-gradient(circle at 39% 27%, #506068, #1f2b30 34%, #090f12 73%, #030608);
+  box-shadow: inset 0 1px 2px #000b, inset 0 -1px 1px #6e79842b;
   transition: background 120ms, box-shadow 120ms;
 }
-.leds i:nth-child(n+5) { --c: #ff3b2f; }
-.leds i:nth-child(n+9) { --c: #4d8dff; }
-.leds i.on {
-  background: radial-gradient(circle at 35% 30%, #fff 0 12%, var(--c) 45%, color-mix(in srgb, var(--c) 55%, #000) 100%);
-  box-shadow: 0 0 10px 1px color-mix(in srgb, var(--c) 70%, transparent), inset 0 -1px 2px rgba(0,0,0,0.4);
+.leds i::after {
+  content: ''; position: absolute; left: 30%; top: 19%; width: 36%; height: 19%; border-radius: 50%;
+  background: #f5ffff4d; transform: rotate(-24deg); pointer-events: none;
+}
+.leds i:nth-child(n+5) { --c: #f4c84b; }
+.leds i:nth-child(n+9) { --c: #f45b4e; }
+.leds i.on::before {
+  background: radial-gradient(circle at 39% 29%, color-mix(in srgb, var(--c) 28%, #fff) 0 7%, color-mix(in srgb, var(--c) 56%, #fff) 24%, var(--c) 50%, color-mix(in srgb, var(--c) 56%, #120f0d) 84%, #100d0c 100%);
+  box-shadow: inset 0 1px 1px #fff6, inset 0 -1px 2px #0009,
+    0 0 5px color-mix(in srgb, var(--c) 50%, transparent), 0 0 11px color-mix(in srgb, var(--c) 19%, transparent);
 }
 
 /* ---------- academy ---------- */
@@ -425,17 +431,16 @@ a:hover { color: var(--acc-glow); }
   background: rgba(5,6,8,0.9);
 }
 
-/* ---------- radio ---------- */
+/* ---------- contact ---------- */
 #radio { padding: clamp(56px,9vh,112px) var(--pad-x) clamp(40px,6vh,72px); }
 .radio-title {
   position: relative; margin: 10px 0 28px;
   font-family: var(--display); font-style: var(--display-style); font-weight: 900;
   font-variation-settings: 'wdth' var(--wide);
-  /* capped so "BOX," (2.7em) fits its column at the section's 1320px max width */
+  /* refinements.css bounds the display face to the contact column. */
   font-size: clamp(64px,15vw,216px); line-height: 0.86; text-transform: uppercase;
   width: fit-content; padding-right: 0.12em;
 }
-.radio-cta { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 20px 32px; }
 .btn-primary {
   position: relative; overflow: hidden;
   color: #fff; padding: 18px 34px;
@@ -572,7 +577,7 @@ a:hover { color: var(--acc-glow); }
 .skip:focus { transform: none; color: var(--bg); }
 main:focus { outline: none; }
 
-/* Elements that animate in are hidden only when JS is running to reveal them. */
+/* Manual start-light replay can animate the hero name; regular content remains visible. */
 .js .hero-name span { opacity: var(--nameo,0); }
 /* The job title is on screen from the first paint; only the stripe and Replay wait for the name. */
 .js .btn-ghost, .js .stripe { opacity: var(--heroo,0); }
@@ -596,11 +601,9 @@ main:focus { outline: none; }
 .btn-motion[aria-pressed="true"] .motion-icon { background: currentColor; clip-path: polygon(0 0, 100% 50%, 0 100%); }
 .btn-motion[aria-pressed="true"] { border-color: var(--acc); color: #fff; }
 
-/* ---------- legibility over the moving smoke ----------
-   A soft dark halo under running text keeps it readable wherever the flow passes. */
-.quote, .stint-team, .degree-meta, .lang-head, .hero-meta, .mono, .kicker, .skill-name, .club, .nav-links a, .footer {
-  text-shadow: 0 1px 2px rgba(3,4,6,0.9), 0 0 14px rgba(3,4,6,0.85);
-}
+/* Readable text uses actual dark surfaces where needed. Blurred text shadows make
+   the glyphs look doubled as the wind moves behind them. */
+.quote, .stint-team, .degree-meta, .lang-head, .hero-meta, .mono, .kicker, .skill-name, .club, .nav-links a, .footer { text-shadow: none; }
 .chrome-text, .hero-name span { text-shadow: none; }
 /* No halo where the text already sits on an opaque card or panel: blurred shadows are the costliest
    thing to rasterize as new content scrolls into view, and there they did nothing for contrast. */
@@ -617,25 +620,13 @@ main:focus { outline: none; }
   .radio-title { --wide: 125; }
 }
 
-/* Small labels that sit directly on the smoke get a soft dark chip (a spread shadow, so no
-   layout change). Measured worst-case contrast with smoke passing behind: >= 7:1. */
-.kicker, .clubs > h3, .radio-cta > .mono, .hero-meta span {
+/* Small labels sit on a compact, opaque field so the letters stay crisp. */
+.kicker, .clubs > h3, .hero-meta span {
   width: fit-content; border-radius: 6px;
-  background: rgba(5,6,8,0.88); box-shadow: 0 0 0 5px rgba(5,6,8,0.88);
+  background: rgba(5,6,8,0.92); padding: 2px 6px; box-shadow: none;
 }
 .kicker::before { box-shadow: 0 0 8px var(--acc); }
 .plate .kicker { background: none; box-shadow: none; }
-
-/* Name outline shown before lights out (see main.js). Same metrics as the name, so letters land in it. */
-.hero-name { position: relative; }
-.name-ghost {
-  position: absolute; inset: 0; z-index: -1; pointer-events: none;
-  color: rgba(120,160,230,0.13); font-kerning: none;   /* per-letter spans aren't kerned either */
-  text-shadow: 0 18px 28px rgba(0,0,0,0.75);           /* the name's drop shadow, rasterized once */
-  transition: color 400ms ease;
-}
-.hero-name[data-landed] .name-ghost { color: transparent; }
-.name-ghost > div { white-space: nowrap; }
 
 /* ---------- telemetry strip (Driver): compact race-style numbers, counted from the page ---------- */
 .telemetry {
@@ -667,37 +658,16 @@ main:focus { outline: none; }
   .hero { min-height: 86svh; }
 }
 
-/* ---------- radio panel: fills the right half of the closing section ---------- */
+/* ---------- open contact layout ---------- */
 .radio-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: clamp(28px, 4vw, 64px); align-items: center; }
 .radio-grid .radio-title { margin: 0; }
 .radio-grid { margin-top: 10px; }   /* same kicker-to-headline spacing as the other sections */
-.radio-panel { display: grid; gap: 22px; padding: clamp(24px, 2.6vw, 36px); }
-.radio-head { display: flex; justify-content: space-between; align-items: center; }
-.radio-head > span:first-child { display: inline-flex; align-items: center; gap: 10px; color: var(--fg-soft); }
-.rec { width: 8px; height: 8px; border-radius: 50%; background: #ff3b2f; box-shadow: 0 0 10px #ff3b2f; animation: pulse 1.6s ease-in-out infinite; }
 .radio-line { margin: 0; font-size: clamp(1.125rem, 0.7rem + 0.75vw, 1.375rem); line-height: 1.4; color: var(--fg-hi); max-width: 34ch; }
-.radio-panel .radio-cta { gap: 14px 24px; }
-/* Voice-activity bars: transform-only animation (compositor), staggered per bar by main.js. */
-.wave { display: flex; align-items: center; gap: 3px; height: 56px; }
-.wave i {
-  flex: 1 1 0; height: 100%; border-radius: 2px;
-  background: linear-gradient(180deg, #a6c8ff, var(--acc) 55%, var(--acc-deep));
-  transform: scaleY(var(--lv, .2)); transform-origin: 50% 50%;
-  animation: talk var(--d, 900ms) ease-in-out var(--dl, 0ms) infinite alternate;
-}
-@keyframes talk { from { transform: scaleY(var(--lo, .12)); } to { transform: scaleY(var(--lv, .7)); } }
-:root[data-motion="paused"] .wave i, :root[data-motion="paused"] .rec, :root[data-motion="paused"] .live::before { animation-play-state: paused; }
-@media (prefers-reduced-motion: reduce) { .wave i { animation: none; } }
+:root[data-motion="paused"] .live::before { animation-play-state: paused; }
 @media (max-width: 860px) { .radio-grid { grid-template-columns: minmax(0, 1fr); } }
-.plate .radio-cta > .mono { background: none; box-shadow: none; }
 .btn-primary { white-space: nowrap; }
 @media (max-width: 420px) {
-  .radio-panel .btn-primary { padding: 15px 22px; font-size: 15px; }
-  .radio-title { font-size: min(64px, 16vw); }   /* 320pt screens (SE, Display Zoom): fits the column */
-}
-@media (max-width: 360px) {
-  .radio-panel { padding: 20px 16px; }
-  .radio-panel .btn-primary { padding: 14px 16px; font-size: 13px; letter-spacing: 0; }
+  .radio-title { font-size: min(64px, 16vw); }
 }
 
 /* Skills: one dark panel behind the whole list instead of a chip under every small label. */
@@ -746,7 +716,7 @@ main:focus { outline: none; }
   .nav::before { background: #050608; }
   .plate, .skills, .telemetry, .club, .btn-ghost, .menu-btn { outline: 1px solid rgba(220,232,250,0.55); outline-offset: -1px; }
   .btn-ghost, .menu-btn, .skills, .telemetry, .club, .footer { background: #050608; }
-  .kicker, .clubs > h3, .radio-cta > .mono, .hero-meta span { background: #050608; box-shadow: 0 0 0 5px #050608; }
+  .kicker, .clubs > h3, .radio-cta > .mono, .hero-meta span { background: #050608; box-shadow: none; }
   .plate .kicker, .plate .radio-cta > .mono { background: none; box-shadow: none; }
   .quote, .stint-team, .degree-meta, .lang-head, .hero-meta, .mono, .kicker, .skill-name, .club, .nav-links a, .footer { text-shadow: none; }
   :focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
@@ -757,6 +727,6 @@ main:focus { outline: none; }
   .nav::before { background: #050608; -webkit-backdrop-filter: none; backdrop-filter: none; }
   .btn-ghost, .menu-btn { background: #0a0d12; -webkit-backdrop-filter: none; backdrop-filter: none; }
   .skills, .telemetry, .club, .footer { background: #050608; }
-  .kicker, .clubs > h3, .radio-cta > .mono, .hero-meta span { background: #050608; box-shadow: 0 0 0 5px #050608; }
+  .kicker, .clubs > h3, .radio-cta > .mono, .hero-meta span { background: #050608; box-shadow: none; }
   .plate .kicker, .plate .radio-cta > .mono { background: none; box-shadow: none; }
 }

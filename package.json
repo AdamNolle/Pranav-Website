@@ -1,0 +1,15 @@
+{
+  "name": "pranav-website",
+  "private": true,
+  "description": "Static personal website. Node dependencies are development and browser-test tools only.",
+  "scripts": {
+    "test": "node tests/site.cjs",
+    "build:three": "node tools/build_three.mjs",
+    "serve": "python3 tools/serve.py"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "playwright": "1.63.0",
+    "three": "0.186.0"
+  }
+}

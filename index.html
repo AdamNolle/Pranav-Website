@@ -28,7 +28,7 @@
 <link rel="preload" href="assets/fonts/pk-wide.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
-<link rel="stylesheet" href="assets/fonts/f1.css">
+<link rel="stylesheet" href="refinements.css">
 <script type="importmap">
 { "imports": {
   "three": "./vendor/three-car.min.js",
@@ -44,17 +44,19 @@
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
+<div class="wind-fallback" aria-hidden="true"></div>
 <div class="page" id="page">
 
   <div class="redline" data-redline aria-hidden="true"></div>
   <header class="nav">
     <a href="#top" class="nav-brand" aria-label="Pranav Kondapaneni, back to top">
-      <span class="badge">PK</span>
+      <span class="badge"><img src="assets/logos/pk-monogram.svg" width="36" height="20" alt="PK"></span>
       <span class="nav-name">Pranav Kondapaneni</span>
     </a>
-    <div class="hud" data-metal aria-hidden="true">
+    <div class="hud" aria-hidden="true">
+      <span class="hud-mode" data-hud="mode">SCROLL TO ACCELERATE</span>
       <div class="hud-read">
-        <div class="hud-speed"><b data-hud="speed">000</b><span class="hud-unit">KM/H</span></div>
+        <div class="hud-speed"><b class="hud-speed-value"><span data-hud="speed">000</span><span class="hud-digits" data-hud-digits hidden></span></b><span class="hud-unit">KM/H</span></div>
         <div class="hud-gear"><small>GEAR</small><b data-hud="gear">N</b></div>
       </div>
     </div>
@@ -75,7 +77,17 @@
   <main id="main" tabindex="-1">
 
   <section id="top" class="hero" data-hero>
-    <canvas class="car-canvas" data-car aria-hidden="true"></canvas>
+    <picture class="car-poster" data-car-poster>
+      <source media="(max-width: 760px)" type="image/webp" srcset="assets/car-poster-mobile.webp 1x, assets/car-poster-mobile-2x.webp 2x">
+      <source media="(max-width: 815px)" type="image/webp" srcset="assets/car-poster-tablet.webp 1x, assets/car-poster-tablet-2x.webp 2x">
+      <source media="(max-width: 980px)" type="image/webp" srcset="assets/car-poster-small-desktop.webp 1x, assets/car-poster-small-desktop-2x.webp 2x">
+      <source media="(max-width: 1160px)" type="image/webp" srcset="assets/car-poster-medium.webp 1x, assets/car-poster-medium-2x.webp 2x">
+      <source media="(max-width: 1260px)" type="image/webp" srcset="assets/car-poster-compact.webp 1x, assets/car-poster-compact-2x.webp 2x">
+      <source media="(min-width: 1377px) and (min-aspect-ratio: 1601/1000)" type="image/webp" srcset="assets/car-poster-wide.webp 1x, assets/car-poster-wide-2x.webp 2x">
+      <source type="image/webp" srcset="assets/car-poster.webp 1x, assets/car-poster-2x.webp 2x">
+      <img src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" width="1440" height="1000" alt="" fetchpriority="high">
+    </picture>
+    <canvas class="car-canvas" data-car tabindex="-1" role="img" aria-hidden="true" aria-label="Interactive black-and-blue PK race car. Drag to rotate, use arrow keys to turn, or Home to reset." aria-describedby="car-help"></canvas>
     <div class="streaks" data-streaks aria-hidden="true"></div>
 
     <div class="lights">
@@ -86,49 +98,48 @@
         <div class="pod"><span data-pod="3"></span><span data-pod="3"></span></div>
         <div class="pod"><span data-pod="4"></span><span data-pod="4"></span></div>
       </div>
-      <span class="mono" data-lights-label aria-hidden="true">LIGHTS</span>
-      <button class="btn-ghost" type="button" data-heroin data-replay><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3L4 9.4"/><path d="M4 4.5v5h5"/></svg>Replay Intro</button>
+      <span class="mono" data-lights-label aria-hidden="true">ON THE GRID</span>
+      <button class="btn-ghost" type="button" data-heroin data-replay><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3L4 9.4"/><path d="M4 4.5v5h5"/></svg>Run Start Lights</button>
       <button class="btn-ghost btn-motion" type="button" aria-pressed="false" data-motion><span aria-hidden="true" class="motion-icon"></span><span data-motion-label>Pause Motion</span></button>
     </div>
 
     <h1 class="hero-name chrome" data-name data-obstacle aria-label="Pranav Kondapaneni">
-      <div aria-hidden="true" data-word="PRANAV"></div>
-      <div aria-hidden="true" data-word="KONDAPANENI"></div>
+      <div aria-hidden="true" data-word="PRANAV">PRANAV</div>
+      <div aria-hidden="true" data-word="KONDAPANENI">KONDAPANENI</div>
     </h1>
-    <div class="stripe" data-stripe aria-hidden="true"></div>
-    <p class="hero-meta">
-      <span>Software Engineer · J.B. Hunt Transport</span>
-      <span>CS @ Georgia Tech</span>
-    </p>
+    <div class="hero-bottom">
+      <p class="hero-meta"><span>Software Engineer at J.B. Hunt</span><span>M.S. Computer Science · Georgia Tech</span></p>
+      <a class="hero-link" href="#stints">Explore my experience <span aria-hidden="true">↘</span></a>
+    </div>
+    <span class="sr-only" id="car-help">Drag horizontally with a mouse or finger to turn the car through a full 360 degrees. Use arrow keys to turn and Home to reset. Vertical touch gestures scroll the page.</span>
   </section>
 
   <section id="driver" class="section" aria-labelledby="driver-title">
     <p class="kicker" data-rev>01 / About</p>
-    <h2 class="section-title chrome-text" id="driver-title" data-rev data-obstacle>Driver</h2>
+    <h2 class="section-title" id="driver-title" data-rev>Driver</h2>
     <div class="driver-grid">
-      <div class="plate portrait" data-rev data-metal data-obstacle>
-        <div class="portrait-frame">
-          <span class="portrait-number" aria-hidden="true">PK</span>
-          <picture>
-            <source srcset="assets/pranav.webp" type="image/webp">
-            <img src="assets/pranav.png" width="1000" height="1000" alt="Portrait of Pranav Kondapaneni" decoding="async" loading="lazy">
-          </picture>
-        </div>
-        <div class="portrait-caption mono" aria-hidden="true"><span>PK</span><span>J.B. Hunt Transport</span></div>
+      <div class="driver-card-wrap" data-rev>
+        <figure class="driver-card" data-holo>
+          <div class="portrait-frame">
+            <img class="driver-portrait" src="assets/pranav.webp" width="1200" height="1200" alt="Pranav Kondapaneni" loading="lazy" decoding="async">
+          </div>
+          <figcaption class="driver-card-caption"><span><strong>Pranav Kondapaneni</strong><small>Software engineer</small></span><span class="card-chip" aria-hidden="true">PK</span></figcaption>
+          <div class="holo-sheen" aria-hidden="true"></div>
+        </figure>
       </div>
       <div class="driver-body">
-        <blockquote class="quote" data-rev><span class="q">“</span>My name is Pranav Kondapaneni. I am passionate about technology and problem solving.<span class="q">”</span></blockquote>
+        <p class="quote" data-rev>I studied computer science at Missouri S&amp;T and joined J.B. Hunt after an application development internship. I’m now pursuing an M.S. at Georgia Tech.</p>
         <dl class="spec carbon" data-rev data-obstacle>
-          <div><dt class="mono">Team</dt><dd>J.B. Hunt Transport Services, Inc.</dd></div>
-          <div><dt class="mono">Seat</dt><dd>Software Engineer</dd></div>
-          <div><dt class="mono">Academy</dt><dd>Georgia Institute of Technology</dd></div>
-          <div><dt class="mono">Driver code</dt><dd>PK</dd></div>
+          <div><dt class="mono">Employer</dt><dd>J.B. Hunt Transport Services, Inc.</dd></div>
+          <div><dt class="mono">Role</dt><dd>Software Engineer</dd></div>
+          <div><dt class="mono">Graduate school</dt><dd>Georgia Institute of Technology</dd></div>
+          <div><dt class="mono">Undergraduate school</dt><dd>Missouri University of Science and Technology</dd></div>
         </dl>
         <ul class="telemetry" data-rev aria-label="Career at a glance">
           <li><b data-count="stints">03</b><span class="mono">Roles</span></li>
-          <li><b data-count="degrees">02</b><span class="mono">CS degrees</span></li>
-          <li><b data-count="langs">04</b><span class="mono">Languages</span></li>
-          <li><b data-count="skills">05</b><span class="mono">Core skills</span></li>
+          <li><b data-count="degrees">02</b><span class="mono">CS programs</span></li>
+          <li><b data-count="langs">04</b><span class="mono">Spoken languages</span></li>
+          <li><b data-count="skills">04</b><span class="mono">Core skills</span></li>
         </ul>
       </div>
     </div>
@@ -136,29 +147,29 @@
 
   <section id="stints" class="section" aria-labelledby="stints-title">
     <p class="kicker" data-rev>02 / Experience</p>
-    <h2 class="section-title chrome-text" id="stints-title" data-rev data-obstacle>Stint history</h2>
+    <h2 class="section-title" id="stints-title" data-rev>Stint history</h2>
     <ol class="stints">
       <li class="plate stint" data-rev data-metal data-obstacle>
         <div class="stint-pos lead"><span class="sr-only">Position </span>P1</div>
         <div><h3 class="stint-role">Software Engineer I</h3><div class="stint-team">J.B. Hunt Transport Services, Inc.</div></div>
-        <div class="stint-status mono"><img class="org-logo" loading="lazy" src="assets/logos/jbhunt-white.webp" alt="" width="160" height="40"><span class="live">On track<span class="sr-only"> (current role)</span></span></div>
+        <div class="stint-status mono"><img class="org-logo" loading="lazy" src="assets/logos/jbhunt-white.webp" alt="" width="160" height="40"><span class="live">Current</span></div>
       </li>
       <li class="plate stint" data-rev data-metal data-obstacle>
         <div class="stint-pos"><span class="sr-only">Position </span>P2</div>
         <div><h3 class="stint-role">Application Development Intern</h3><div class="stint-team">J.B. Hunt Transport Services, Inc.</div></div>
-        <div class="stint-status mono"><img class="org-logo" loading="lazy" src="assets/logos/jbhunt-white.webp" alt="" width="160" height="40"><span>Finished</span></div>
+        <div class="stint-status mono"><img class="org-logo" loading="lazy" src="assets/logos/jbhunt-white.webp" alt="" width="160" height="40"><span>Previous</span></div>
       </li>
       <li class="plate stint" data-rev data-metal data-obstacle>
         <div class="stint-pos"><span class="sr-only">Position </span>P3</div>
         <div><h3 class="stint-role">Peer Learning Assistant</h3><div class="stint-team">Missouri University of Science and Technology</div></div>
-        <div class="stint-status mono"><img class="org-logo tall" loading="lazy" src="assets/logos/missouri-st-white.webp" alt="" width="160" height="40"><span>Finished</span></div>
+        <div class="stint-status mono"><img class="org-logo tall" loading="lazy" src="assets/logos/missouri-st-white.webp" alt="" width="160" height="40"><span>Previous</span></div>
       </li>
     </ol>
   </section>
 
   <section id="setup" class="section" aria-labelledby="setup-title">
     <p class="kicker" data-rev>03 / Skills &amp; languages</p>
-    <h2 class="section-title chrome-text" id="setup-title" data-rev data-obstacle>Setup</h2>
+    <h2 class="section-title" id="setup-title" data-rev>Setup</h2>
     <div class="setup-grid">
       <div class="skills">
         <h3 class="mono" id="skills-h" data-rev>Skills</h3>
@@ -167,11 +178,10 @@
         <li class="skill" data-rev><span class="mono" aria-hidden="true">02</span><span class="skill-name">Kubernetes</span><span class="mono">J.B. Hunt</span></li>
         <li class="skill" data-rev><span class="mono" aria-hidden="true">03</span><span class="skill-name">TypeScript</span><span class="mono">J.B. Hunt</span></li>
         <li class="skill" data-rev><span class="mono" aria-hidden="true">04</span><span class="skill-name">Kanban</span><span class="mono">J.B. Hunt</span></li>
-        <li class="skill" data-rev><span class="mono" aria-hidden="true">05</span><span class="skill-name">Critical Thinking and Communication</span><span class="mono"></span></li>
         </ul>
       </div>
       <div class="plate langs" data-rev data-metal data-obstacle>
-        <h3 class="mono">Radio languages</h3>
+        <h3 class="mono">Spoken languages</h3>
         <div class="lang"><div class="lang-head"><b>English</b><span class="mono">Native or bilingual</span></div><div class="leds" data-level="12" aria-hidden="true"></div></div>
         <div class="lang"><div class="lang-head"><b>Telugu</b><span class="mono">Professional working</span></div><div class="leds" data-level="7" aria-hidden="true"></div></div>
         <div class="lang"><div class="lang-head"><b>Hindi</b><span class="mono">Limited working</span></div><div class="leds" data-level="5" aria-hidden="true"></div></div>
@@ -182,7 +192,7 @@
 
   <section id="academy" class="section" aria-labelledby="academy-title">
     <p class="kicker" data-rev>04 / Education</p>
-    <h2 class="section-title chrome-text" id="academy-title" data-rev data-obstacle>Academy</h2>
+    <h2 class="section-title" id="academy-title" data-rev>Academy</h2>
     <div class="degrees">
       <div class="plate degree" data-rev data-metal data-obstacle>
         <div class="degree-top"><p class="kicker" aria-hidden="true">M.S.</p><img class="org-logo" loading="lazy" src="assets/logos/georgia-tech-white.webp" alt="" width="160" height="40"></div>
@@ -196,7 +206,7 @@
       </div>
     </div>
     <div class="clubs" data-rev>
-      <h3 class="mono" id="clubs-h">Paddock clubs</h3>
+      <h3 class="mono" id="clubs-h">Beyond the classroom</h3>
       <ul class="club-list" aria-labelledby="clubs-h">
         <li class="pill club">Eta Kappa Nu · Gamma Theta Chapter</li>
         <li class="pill club">Google Developer Student Club</li>
@@ -210,19 +220,14 @@
     <p class="kicker" data-rev>05 / Contact</p>
     <div class="radio-grid">
       <h2 class="radio-title chrome-text" id="radio-title" data-rev data-obstacle>Box, box.</h2>
-      <div class="plate radio-panel" data-rev data-metal data-obstacle>
-        <div class="radio-head mono"><span><span class="rec" aria-hidden="true"></span>Team radio · PK</span><span aria-hidden="true">CH 07</span></div>
-        <div class="wave" aria-hidden="true" data-wave></div>
-        <p class="radio-line">Want to talk engineering, logistics tech or a role on your team? Message Pranav directly.</p>
-        <div class="radio-cta">
-          <a class="pill btn-primary" href="https://www.linkedin.com/in/pranavkondapaneni/" target="_blank" rel="noopener">Connect on LinkedIn <span aria-hidden="true">→</span><span class="sr-only"> (opens in a new tab)</span></a>
-          <span class="mono" aria-hidden="true">Channel open</span>
-        </div>
+      <div class="contact-copy" data-rev>
+        <a class="pill btn-primary" href="https://www.linkedin.com/in/pranavkondapaneni/" target="_blank" rel="noopener">Connect on LinkedIn <span aria-hidden="true">→</span><span class="sr-only"> (opens in a new tab)</span></a>
       </div>
     </div>
   </section>
   </main>
 
+  <div class="lap-progress" aria-hidden="true"><span data-progress></span></div>
   <footer class="footer mono">
     <span>© 2026 Pranav Kondapaneni</span>
     <a href="#top">Back to Top <span aria-hidden="true">↑</span></a>

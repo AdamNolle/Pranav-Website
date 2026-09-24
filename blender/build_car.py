@@ -2005,7 +2005,7 @@ def decal_mat(name, img, rough=0.32, coat=1.0):
 
 
 print('building livery ...')
-LOGO = {k: load_logo(k) for k in ('jbhunt', 'georgia-tech', 'georgia-tech-wordmark', 'missouri-st')}
+LOGO = {k: load_logo(k) for k in ('jbhunt', 'georgia-tech', 'georgia-tech-wordmark', 'missouri-st', 'pk-monogram')}
 LOGO_MAT = {k: decal_mat('Decal_Logo_' + k, v[0]) for k, v in LOGO.items() if v[0]}
 
 
@@ -2068,19 +2068,19 @@ def livery():
     # (the hero sweep, pinstripe and panel lines are painted in the livery texture set; logos are decals)
     # 2) J.B. Hunt title logo on the sidepods
     for s, d in side_views:
-        logo_decal('jbhunt', [pods[0 if s > 0 else 1]], (-0.10, s * 0.9, 0.37), d, (0, 0, 1), width=0.70)
+        logo_decal('jbhunt', [pods[0 if s > 0 else 1]], (-0.10, s * 0.9, 0.37), d, (0, 0, 1), width=1.22)
     # 3) Missouri S&T on the nose sides and front-wing endplates
     for s, d in side_views:
-        logo_decal('missouri-st', [body], (2.33, s * 0.4, 0.33), d, (0.25, 0, 1), width=0.22)
+        logo_decal('missouri-st', [body], (2.28, s * 0.4, 0.33), d, (0.25, 0, 1), width=0.42)
         eps = [o for o in col.objects if o.name.startswith('FW_Endplate') and (o.matrix_world @ o.data.vertices[0].co).y * s > 0]
-        logo_decal('missouri-st', eps, (2.66, s * 1.2, 0.165), d, (0, 0, 1), width=0.28)
+        logo_decal('missouri-st', eps, (2.66, s * 1.2, 0.165), d, (0, 0, 1), width=0.43)
     # 4) Georgia Tech on the engine cover flanks and rear-wing endplates (inner faces)
     for s, d in side_views:
-        logo_decal('georgia-tech', [body, airbox], (-0.52, s * 0.6, 0.62), d, (0.35, 0, 1), height=0.075)
+        logo_decal('georgia-tech', [body, airbox], (-0.60, s * 0.6, 0.66), d, (0.35, 0, 1), height=0.16)
         eps = [o for o in col.objects if o.name.startswith('RW_Endplate') and (o.matrix_world @ o.data.vertices[0].co).y * s > 0]
         # sized to the endplate (0.52 m x 0.68 m) so both marks read at hero scale
-        logo_decal('jbhunt', eps, (-2.285, s * 1.0, 0.845), d, (0, 0, 1), width=0.36)
-        logo_decal('georgia-tech-wordmark', eps, (-2.285, s * 1.0, 0.705), d, (0, 0, 1), width=0.38)
+        logo_decal('jbhunt', eps, (-2.285, s * 1.0, 0.845), d, (0, 0, 1), width=0.46)
+        logo_decal('georgia-tech-wordmark', eps, (-2.285, s * 1.0, 0.705), d, (0, 0, 1), width=0.47)
         type_decal('ep_no_%d' % s, NUMBER, WHITE, eps, (-2.31, s * 1.0, 0.52), d, (0, 0, 1), 0.16, shear=0.18)
     # 5) J.B. Hunt across the DRS flap's upper face, centred on the flap as built and sized to its chord
     #    (a fixed centre missed the flap once the rear wing moved, so the decal silently came out empty).
@@ -2090,16 +2090,20 @@ def livery():
         pts = [o.matrix_world @ Vector(c) for o in flap for c in o.bound_box]
         lo = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
         hi = Vector((max(p.x for p in pts), max(p.y for p in pts), max(p.z for p in pts)))
-        width = min(0.62, 0.72 * (hi.x - lo.x) * LOGO['jbhunt'][1], 0.6 * (hi.y - lo.y))
+        width = min(1.08, 0.88 * (hi.x - lo.x) * LOGO['jbhunt'][1], 0.84 * (hi.y - lo.y))
         dec = logo_decal('jbhunt', flap, ((lo.x + hi.x) / 2, 0, (lo.z + hi.z) / 2), (-0.35, 0, -1), (-1, 0, 0), width=width)
         print('DRS flap decal: chord x %.3f m, span %.3f m, logo %.3f m wide, %d faces' % (
             hi.x - lo.x, hi.y - lo.y, width, len(dec.data.polygons) if dec else 0))
     # 6) driver name on the cockpit flanks, number on the nose, PK + number on the fin
     for s, d in side_views:
-        type_decal('name_%d' % s, 'P. KONDAPANENI', WHITE, [airbox], (-0.02, s * 0.5, 0.878), d, (-0.05, 0, 1), 0.032, spacing=1.12)
+        type_decal('name_%d' % s, 'P. KONDAPANENI', WHITE, [airbox], (-0.02, s * 0.5, 0.878), d, (-0.05, 0, 1), 0.047, spacing=1.08)
         # on the slim fin, sitting in the band just above the engine cover
         type_decal('fin_pk_%d' % s, 'PK', WHITE, [fin], (-0.62, s * 0.3, float(BODY(-0.62)['zr']) + 0.038), d, (0.1, 0, 1), 0.05, shear=0.18)
         type_decal('fin_no_%d' % s, NUMBER, WHITE, [fin], (-0.92, s * 0.3, float(BODY(-0.92)['zr']) + 0.034), d, (0.1, 0, 1), 0.046, shear=0.18)
+    # Original forward-leaning PK monogram: prominent on the monocoque, not a tiny sponsor.
+    for s, d in side_views:
+        logo_decal('pk-monogram', [body], (1.13, s * 0.6, 0.49), d, (0.16, 0, 1), width=0.45)
+    logo_decal('pk-monogram', [body], (2.43, 0, float(BODY(2.43)['zr']) + 0.2), (0, 0, -1), (-1, 0, 0), width=0.16)
     # race number on the nose top, projected straight down; upright when seen from ahead of the car
     type_decal('nose_no', NUMBER, WHITE, [body], (1.95, 0, float(BODY(1.95)['zr']) + 0.2), (0, 0, -1), (-1, 0, 0), 0.16, shear=0.18)
 

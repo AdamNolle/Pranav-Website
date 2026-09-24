@@ -3,6 +3,9 @@
 .serena/
 .DS_Store
 __pycache__/
+node_modules/
+tests/artifacts/
+blender/*.blend1
 
 # Blender review renders (regenerate with the build scripts)
 blender/preview_*.png
@@ -11,3 +14,10 @@ blender/metal_reference*.png
 # Unprocessed source photo (the site uses the cutout)
 assets/pranav-original.jpg
 blender/livery_*.png
+
+# Local Codex state and font files without verified publication rights
+.codex/
+assets/fonts/Formula1-*.woff2
+assets/fonts/F1-SOURCE.md
+assets/fonts/unbounded-latin.woff2
+assets/fonts/OFL-Unbounded.txt

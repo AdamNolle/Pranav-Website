@@ -1,0 +1,93 @@
+/* Refinement layer: retain the original black/blue wind-tunnel design and section layout. */
+:root{
+  --display:'PK Wide',sans-serif;--display-style:normal;
+  --chrome:linear-gradient(180deg,#fff 0%,#e7eefb 52%,#a8c3e7 100%);
+  --chrome-sm:linear-gradient(180deg,#fff,#cadcf4);
+}
+.page{font-size:1.0625rem}
+.badge{display:inline-flex;align-items:center;justify-content:center;padding:6px 12px}.badge img{display:block;width:36px;height:20px}
+.nav{padding-top:12px;padding-bottom:12px}.nav-name{font-size:10px;letter-spacing:.05em}.nav-links{gap:6px 20px}.nav-links a[aria-current]{color:#fff}.nav-links a[aria-current]::after{content:'';width:4px;height:4px;background:var(--acc);border-radius:50%}
+.hud{--telemetry:#4de385;width:clamp(232px,19vw,252px);min-width:0;gap:7px;padding:10px 14px 12px;border:1px solid #52627666;border-radius:20px;background:linear-gradient(155deg,#1b222b,#080c11 70%);box-shadow:inset 0 1px 0 #dce9f126,inset 0 0 0 3px #0b0e13,0 12px 24px -14px #000}
+.hud-mode{font:500 .5625rem/1.4 var(--mono);letter-spacing:.1em;color:var(--telemetry);white-space:nowrap}
+.hud-read{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:6px;padding:6px 8px 5px;border:1px solid #284139;border-radius:9px;background:linear-gradient(#040e0c,#08120f);box-shadow:inset 0 2px 5px #000,0 1px #d0fff115}
+.hud-speed-value,.hud-gear b{color:var(--telemetry);text-shadow:none}.hud-speed-value{position:relative;display:inline-flex;align-items:center;min-width:67px;height:37px;font-size:35px;font-weight:600;letter-spacing:.06em;font-variant-numeric:tabular-nums;line-height:1}
+.hud-speed-value.is-segmented [data-hud="speed"]{display:none}.hud-digits{display:flex;align-items:center;gap:2px}.hud-digits[hidden]{display:none}.hud-digits svg{display:block;flex:none;width:21px;height:37px;overflow:visible;filter:drop-shadow(0 0 2px color-mix(in srgb,var(--telemetry) 55%,transparent))}.hud-digits path{fill:#17342c}.hud-digits path.on{fill:var(--telemetry)}
+.hud-unit{font-size:10px}.hud-gear{padding-left:9px;border-left:1px solid #284139}.hud-gear b{font:700 28px/1 var(--mono)}
+.hud[data-band="push"]{--telemetry:#f4c84b}.hud[data-band="limit"]{--telemetry:#f45b4e}
+.lap-progress{position:fixed;inset:auto 0 0;z-index:45;height:2px;background:#0b1525;pointer-events:none}.lap-progress span{display:block;height:100%;background:var(--acc);transform:scaleX(0);transform-origin:left}
+.hero{min-height:max(860px,100svh);padding-bottom:0;isolation:auto}
+/* The car and its loading poster sit above the fixed wind layer, so smoke flows behind their bodywork. */
+.car-poster{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;z-index:2}.car-poster[hidden]{display:none}.car-poster img{display:block;width:100%;height:100%;object-fit:cover}
+.wind-fallback{position:fixed;inset:0;z-index:1;pointer-events:none;background:radial-gradient(ellipse 80% 65% at 12% 55%,#2a5a9d24,transparent 72%),radial-gradient(ellipse 90% 70% at 95% 30%,#a4c8ec11,transparent 72%);opacity:.7;transition:opacity .6s ease,visibility 0s linear .6s}.wind-ready .wind-fallback{opacity:0;visibility:hidden}
+.hero-name{font-weight:650;letter-spacing:-.055em;line-height:1.12;padding-bottom:.08em}.hero-name>[data-word]{background:var(--chrome);background-clip:text;-webkit-background-clip:text;color:transparent}
+.hero-name span{opacity:1!important}.js .btn-ghost,.js .stripe{opacity:1}
+.hero-bottom{position:relative;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:20px 0 30px}
+.hero-meta{margin:0;display:grid;gap:5px;font-size:.75rem;letter-spacing:.045em}.hero-meta span{width:fit-content;background:#050608e8;padding:2px 6px;border-radius:3px}
+.hero-link{display:inline-flex;align-items:center;gap:20px;min-height:48px;font-size:.9375rem;white-space:nowrap;color:var(--fg-soft)}.hero-link span{color:var(--acc-glow);font-size:1.6rem}
+.car-canvas{z-index:2;transition:none}.car-canvas.ready{pointer-events:auto;cursor:grab;touch-action:pan-y}.car-canvas.dragging{cursor:grabbing}.streaks{pointer-events:none}
+/* Recessed LED lenses, matte cast housings and a real mounting rail; light falls from above. */
+.pods{position:relative;isolation:isolate;gap:9px}.pods::before{content:'';position:absolute;z-index:-1;left:-7px;right:-7px;top:45%;height:12px;border-radius:2px;background:linear-gradient(#535455,#242629 30%,#101114);box-shadow:0 4px 8px #000b,inset 0 1px #a9a7a244}
+.pod{position:relative;padding:8px 7px;gap:9px;border-radius:12px;border:1px solid #363739;background:linear-gradient(180deg,#393a3b,#1c1e20 16%,#101214 75%,#08090a);box-shadow:inset 0 1px 0 #e1dace44,inset 1px 0 1px #ffffff0b,inset 0 -2px 2px #000,0 8px 12px -6px #000}
+.pod::before,.pod::after{content:'';position:absolute;left:50%;width:3px;height:3px;margin-left:-1.5px;border-radius:50%;background:linear-gradient(#8b8983,#343638);box-shadow:0 1px 1px #000}.pod::before{top:2px}.pod::after{bottom:2px}
+.pod span{--led-points:#8b47343d;position:relative;display:block;width:clamp(22px,2.2vw,32px);height:clamp(22px,2.2vw,32px);border:2px solid #08090a;background:radial-gradient(ellipse at 42% 28%,#58332e,#270e0d 60%,#0b0707 100%);box-shadow:0 1px 0 #8b898455,inset 0 3px 5px #000,inset 0 -1px 2px #a3473222}
+.pod span::before{content:'';position:absolute;inset:2px;border-radius:50%;background:radial-gradient(circle,var(--led-points) 0 .65px,transparent .9px) 0 0/3px 3px;mask-image:radial-gradient(circle,#000 24%,#000b 62%,transparent 91%)}
+.pod span::after{content:'';position:absolute;inset:1px;border-radius:50%;background:radial-gradient(ellipse 62% 29% at 39% 20%,#fff7e2a3,transparent 78%),linear-gradient(180deg,#fff3df12,transparent 38%);box-shadow:inset 0 1px 1px #ffede733}
+.pod span.on{--led-points:#ffb9a9b3;background:radial-gradient(ellipse at 43% 32%,#ffa08d 0%,#e82e22 34%,#a91511 70%,#3a0908 100%);box-shadow:inset 0 1px 2px #fff3df59,inset 0 -2px 3px #460806,0 0 6px #e8312466,0 0 14px #e8312426}
+.pod:has(.on){border-color:#64413a;box-shadow:inset 0 1px #e1dace44,inset 0 -2px 2px #000,0 8px 12px -6px #000,0 0 12px #f7332018}
+.section{padding-top:clamp(64px,8vh,100px);padding-bottom:clamp(64px,8vh,100px)}
+.section-title{max-inline-size:100%;overflow-wrap:anywhere;font-size:clamp(36px,5.8vw,84px);font-weight:650;letter-spacing:-.045em;line-height:1.12;margin:14px 0 22px;background:var(--chrome-sm);background-clip:text;-webkit-background-clip:text;color:transparent;text-transform:uppercase}
+.section-deck{max-width:58ch;width:fit-content;margin:0 0 42px;font-size:1.125rem;line-height:1.6;color:#bfccdf;background:#050608dd;box-shadow:0 0 0 6px #050608dd;border-radius:6px}
+.driver-grid{grid-template-columns:minmax(0,.82fr) minmax(0,1fr);gap:clamp(32px,5vw,76px);align-items:center}
+.plate{border-radius:20px;background:linear-gradient(150deg,#1b2431,#0f141d 75%);box-shadow:inset 0 1px 0 #aec9ee24,0 18px 40px -24px #000;border:1px solid #aaa59b22}
+.stint{padding:28px 30px;gap:26px;grid-template-columns:minmax(84px,auto) minmax(0,1fr) auto}.stint:first-child{border-left:3px solid var(--acc)}
+.stint-role{font-family:var(--text);font-weight:600;overflow-wrap:anywhere;font-size:clamp(1rem,1.6vw,1.6rem);line-height:1.45;letter-spacing:-.025em}.stint-pos{font-weight:650;font-size:1.8rem}.stint-team{margin-top:7px}
+.skill-name{font-family:var(--text);font-size:1.25rem;font-weight:600;line-height:1.4;text-transform:none}.skill{padding:19px 4px}.skill .mono{font-size:.625rem;letter-spacing:.02em}
+.degree-field{min-width:0;font-family:var(--text);overflow-wrap:anywhere;font-size:clamp(1.4rem,2.3vw,2rem);line-height:1.3;font-weight:600;letter-spacing:-.04em}.degree{gap:24px}.degree-meta{gap:12px 18px}.degrees{gap:20px}
+.contact-copy{display:grid;gap:28px;max-width:36rem}.contact-copy .radio-line{color:#dce3eb;text-shadow:none;line-height:1.65;background:#05080ee8;border-left:2px solid #2b7bff;padding:12px 18px;border-radius:0 8px 8px 0}.contact-copy .btn-primary{width:fit-content;max-width:100%;white-space:normal;font-size:clamp(.875rem,1.1vw,1.0625rem);padding:17px 24px}
+.radio-grid{container-type:inline-size}.radio-title{font-weight:650;letter-spacing:-.065em;max-width:100%;font-size:min(clamp(50px,8vw,140px),10cqi);line-height:1.1}.btn-primary{font-family:var(--text);font-weight:600;font-size:1.0625rem;letter-spacing:.025em;text-transform:none;min-height:48px}.quote{font-size:clamp(1.1875rem,1.6vw,1.5rem);line-height:1.5;color:#e4ebf5;background:#080d15e8;border-left:2px solid var(--acc);border-radius:0 8px 8px 0;padding:18px 22px}.spec{border-radius:16px}.telemetry b{font-weight:600;font-size:clamp(30px,3vw,44px)}
+/* Pranav's original photograph; one transformed card and a subtle foil layer. */
+.driver-card-wrap{perspective:1100px;max-width:460px;width:100%;margin:auto}
+.driver-card{--mx:50%;--my:35%;position:relative;isolation:isolate;overflow:hidden;margin:0;border:1px solid #688bc2;border-radius:20px;padding:18px 18px 0;background:linear-gradient(145deg,#1a3052,#081222 55%,#142b47);box-shadow:0 24px 50px -25px #000;transform:rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg));transition:transform .35s var(--ease),box-shadow .35s}
+.driver-card.is-tracking{transition:transform .1s linear;will-change:transform;box-shadow:0 26px 65px -28px #185bd0}
+.driver-card{touch-action:pan-y pinch-zoom}
+.driver-card:before{content:'';position:absolute;inset:5px;border:1px solid #9bbfe43d;border-radius:15px;z-index:5;pointer-events:none}
+.driver-card .portrait-frame{position:relative;aspect-ratio:5/6;border-radius:0;background:radial-gradient(ellipse at 50% 40%,#28538933,transparent 70%);box-shadow:none}
+.driver-card .driver-portrait{position:absolute;inset:auto 0 0;left:0;width:100%;height:100%;object-fit:cover;object-position:center bottom;max-width:100%;transform:none;filter:none}
+.driver-card-caption{position:relative;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 -18px;padding:20px 22px 24px;background:linear-gradient(90deg,#14243a,#102139);border-top:1px solid #6f91bd55}
+.driver-card-caption strong{display:block;overflow-wrap:anywhere;font:600 .8rem/1.6 var(--display);letter-spacing:-.025em}.driver-card-caption small{display:block;margin-top:6px;color:#aec8e5;font:.625rem/1.5 var(--mono);letter-spacing:.025em}
+.card-chip{font:700 1rem var(--display);color:#a7caff;border:1px solid #5c7f9e;padding:8px;border-radius:5px}
+.holo-sheen{position:absolute;inset:0;z-index:4;pointer-events:none;opacity:.17;background:radial-gradient(ellipse at var(--mx) var(--my),#fff8,transparent 55%),repeating-linear-gradient(120deg,#76dfff22 0%,#ab88ff44 15%,#6bffbc22 30%,#ffce9022 45%,#76dfff22 60%);mix-blend-mode:screen;background-size:100% 100%,220% 220%;background-position:center,var(--mx) var(--my);transition:opacity .3s}
+.is-tracking .holo-sheen{opacity:.44}.card-hint{font:400 .625rem/1.7 var(--mono);color:var(--muted);text-align:center;margin:18px 0 0;background:#050608d9}.card-hint>span:first-child{color:#8fbaff}
+/* Conservative motion: continuous atmosphere remains, expensive metallic-card canvas does not. */
+:root[data-motion="paused"] .driver-card{transform:none!important;transition:none}
+@media(min-width:861px) and (max-width:1399px){.nav-name{display:none}.nav{grid-template-columns:auto auto minmax(0,1fr)}.hud{justify-self:start}}
+@media(max-width:1180px){.driver-card-caption strong{font-size:.7rem}.card-chip{display:none}}
+@media(max-width:960px){.driver-grid{grid-template-columns:minmax(0,1fr)}.driver-card-wrap{max-width:460px}}
+@media(max-width:860px){.radio-title{font-size:min(98px,18cqi)}.hero{min-height:max(850px,100svh)}.driver-grid{gap:36px}.hero-link{font-size:.8125rem;gap:12px}.stint{gap:20px;padding:25px;grid-template-columns:minmax(84px,auto) minmax(0,1fr) auto}.stint-status .org-logo{max-width:110px}.nav-name{display:none}.hud{min-width:0}.hud-mode{font-size:.5rem}.hud-speed b{font-size:27px}.hud-gear b{font-size:22px}}
+/* Tall small tablets need the car and headline closer without shrinking the phone hero. */
+@media(min-width:761px) and (max-width:860px){.hero{min-height:max(850px,min(100svh,880px))}}
+@media(max-width:760px){
+ .hero{min-height:clamp(650px,90svh,760px)}
+ .lights{top:110px;gap:12px}.pods{gap:8px}.pod{padding:7px 6px;gap:8px}.pod span{width:22px;height:22px}.lights>[data-lights-label]{display:none}.btn-ghost{font-size:10px;padding:9px 12px}
+ .hero-bottom{align-items:flex-start}.hero-meta{font-size:.6875rem}.hero-name{line-height:1.15}
+ .section-title{font-size:clamp(26px,6.5vw,58px)}.section-deck{margin-bottom:32px;font-size:1.0625rem}.driver-grid{grid-template-columns:minmax(0,1fr)}.driver-card-wrap{max-width:400px}.driver-card-caption strong{font-size:.82rem}.card-chip{display:block}.driver-body{gap:30px}.stint{grid-template-columns:minmax(62px,auto) minmax(0,1fr);gap:16px}.stint-status{grid-column:2}.stint-role{font-size:1rem;line-height:1.5}.stint-pos{font-size:1.25rem}.degree-field{font-size:1.55rem}.skill-name{font-size:1.2rem}.hover-hint{display:none}
+}
+@media(max-width:560px){.hero{min-height:clamp(650px,90svh,760px)}.hero-bottom{display:grid;gap:8px;padding:16px 0}.hero-meta{font-size:.6875rem;line-height:1.7;letter-spacing:.02em}.hero-link{justify-content:space-between;width:100%;min-height:42px}.hud{padding:8px 10px;gap:3px}.hud-read{gap:10px}.hud-unit{font-size:9px}.hud-gear small{font-size:9px}.hud-mode{font-size:.4375rem}.section{padding-top:56px;padding-bottom:56px}.telemetry b{font-size:30px}.radio-panel .btn-primary{font-size:1rem}.nav{gap:12px}.hud-speed b{font-size:25px}.hud-gear b{font-size:21px}}
+@media(max-width:370px){.hud-gear small{display:none}.hud-read{gap:10px}.badge{padding:6px 9px}.badge img{width:29px}.driver-card-caption strong{font-size:.68rem}.card-chip{display:none}.card-hint{font-size:.5625rem}.hero{min-height:clamp(650px,90svh,760px)}.pod span{width:20px;height:20px}.lights{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.pods{grid-column:1/-1;width:max-content}.lights .btn-ghost{min-width:0;justify-content:center;gap:5px;padding:7px 8px;font-size:9px;letter-spacing:.035em;white-space:nowrap}#academy-title{font-size:22px;letter-spacing:-.055em;overflow-wrap:normal}}
+/* The dashboard readout is an inset screen with three real seven-segment SVG digits. */
+@media(max-width:860px){.nav{grid-template-columns:auto minmax(0,1fr) auto}.hud{justify-self:center;width:206px}.hud-mode{font-size:8px}}
+@media(min-width:561px) and (max-width:860px){.hud{position:absolute;top:12px;left:50%;transform:translateX(-50%)}.nav-menu{grid-column:3}}
+@media(min-width:561px) and (max-width:760px){.lights{top:132px}}
+@media(max-width:560px){.nav{min-height:85px}.hud{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:clamp(156px,42vw,174px);padding:7px 8px 8px;gap:4px;border-radius:15px}.nav-menu{grid-column:3}.hud-read{padding:3px 5px;gap:3px}.hud-speed-value{min-width:44px;height:25px;font-size:25px}.hud-digits{gap:1px}.hud-digits svg{width:14px;height:25px}.hud-unit{font-size:9px}.hud-gear{padding-left:6px}.hud-gear small{font-size:8px}.hud-gear b{font-size:21px}}
+@media(max-width:370px){.hud-gear small{display:block}.hud-read{gap:3px}}
+@media(max-width:300px){.nav{grid-template-columns:auto minmax(0,1fr);min-height:0}.nav-menu{grid-column:2}.hud{display:none}}
+@media(pointer:coarse){.hover-hint{display:none}}
+@media(prefers-reduced-motion:reduce){.driver-card{transform:none!important;transition:none}.holo-sheen{background-position:center!important;transition:none}.car-canvas{transition:none}.btn-motion{display:none}}
+:root[data-motion="paused"] [data-replay]{display:none}
+@media(forced-colors:active){.hero-name>[data-word],.section-title{background:none;color:CanvasText}.holo-sheen,.car-poster{display:none}.driver-card{border:1px solid CanvasText}}
+html:not(.js) .lights{display:none}
+html:not(.js) .hero-name{font-size:clamp(14px,4.2vw,90px);max-width:100%}
+/* Below-fold text stays legible; secondary controls are never shrunk into unreadable hairlines. */
+@media(forced-colors:active){.wind-fallback{display:none}}
+@media(prefers-reduced-motion:reduce){.redline i,.leds i{transition:none}}
+@media(forced-colors:active){.redline,.leds,.pods{display:none}}

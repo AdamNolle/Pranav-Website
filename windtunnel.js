@@ -1,17 +1,17 @@
 // Wind tunnel: full-page smoke visualisation + PIV tracer layer.
 // Real-time 2D stable fluids on WebGL2 half-float targets, in viewport space:
-// free stream from the left, obstacles from [data-obstacle] / the car / the pointer,
+// free stream from the left, obstacles from [data-obstacle] / the projected car silhouette,
 // smoke filaments from a nozzle rake, textured with Cycles-rendered wisps (assets/smoke/),
 // plus GPU tracer motes and volumetric puffs advected by transform feedback.
 // Text obstacles are glyph-accurate (Canvas2D raster -> GPU jump-flood SDF); the car uses __carMask
 // (silhouette) or __carBounds. Reads window.__speed; writes window.__windFlow = { speed, gust }.
 // Listens for race:go / race:reset / motion:toggle.
 
-const REDUCE = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const FINE = matchMedia('(pointer: fine)').matches;
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const finePointer = matchMedia('(hover: hover) and (pointer: fine)');
 // Frozen = reduced motion, or the page's "Pause motion" toggle (WCAG 2.2.2). Still frames only.
 const userPaused = () => document.documentElement.dataset.motion === 'paused';
-let frozen = REDUCE || userPaused();
+let frozen = reducedMotion.matches || userPaused();
 const MAXR = 48;          // obstacle + dim rects per frame
 const VU = 100;           // velocity unit: 1 = 100 CSS px/s (keeps half-float pressure in range)
 const ASSETS = new URL('assets/smoke/', import.meta.url).href;
@@ -20,28 +20,41 @@ if (window.__windTunnel) window.__windTunnel.destroy();
 
 // ---------- quality tiers ----------
 const TIERS = [
-  { name: 'low',  cell: 7, dye: 2.4, iters: 12, parts: 9000,  puffs: 40,  dpr: 1.25 },
-  { name: 'mid',  cell: 5, dye: 2.2, iters: 18, parts: 24000, puffs: 80,  dpr: 1.5 },
-  { name: 'high', cell: 4, dye: 1.8, iters: 26, parts: 50000, puffs: 120, dpr: 1.5 },
+  { name: 'economy', cell: 9, dye: 3, iters: 8, parts: 4000, puffs: 24, dpr: 1, hz: 30 },
+  { name: 'low', cell: 7, dye: 2.4, iters: 12, parts: 20000, puffs: 36, dpr: 1, hz: 30 },
+  { name: 'mid', cell: 5.5, dye: 2.3, iters: 16, parts: 20000, puffs: 56, dpr: 1.25, hz: 45 },
+  { name: 'high', cell: 5, dye: 2.1, iters: 20, parts: 42000, puffs: 80, dpr: 1.25, hz: 60 },
 ];
 function pickTier() {
+  const connection = navigator.connection;
+  if (connection?.saveData || /^(slow-2g|2g)$/.test(connection?.effectiveType || '')) return 0;
   const cores = navigator.hardwareConcurrency || 4, mem = navigator.deviceMemory || 8;
   const coarse = matchMedia('(pointer: coarse)').matches, small = Math.min(innerWidth, innerHeight) < 600;
-  if (coarse && (small || cores <= 6 || mem <= 4)) return 0;
-  if (!coarse && cores >= 8 && mem >= 8 && !small) return 2;
-  return 1;
+  if (small || (coarse && (cores <= 6 || mem <= 4))) return 1;
+  if (!coarse && cores >= 8 && mem >= 8 && !small) return 3;
+  return 2;
 }
 let tierIx = pickTier();
 
 // ---------- canvas ----------
 let canvas = makeCanvas();
+const BOOT_FILL_MS = 2600;
+let bootFillAt = 0;
+function fillFront(W, now = performance.now()) {
+  // A paused/reduced-motion visitor gets the settled still frame; resuming cannot rewind it.
+  if (frozen) bootFillAt = Math.min(bootFillAt || now, now - BOOT_FILL_MS);
+  else if (!bootFillAt) bootFillAt = now;
+  const soft = Math.max(50, Math.min(110, W * .1));
+  const progress = Math.min(1, Math.max(0, (now - bootFillAt) / BOOT_FILL_MS));
+  return { front: -soft + progress * (W + 2 * soft), soft };
+}
 function makeCanvas() {
   const c = document.createElement('canvas');
   c.className = 'wind-tunnel';
   c.setAttribute('aria-hidden', 'true');
   c.tabIndex = -1;
   c.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:1;opacity:0;' +
-    (REDUCE ? '' : 'transition:opacity 1.4s ease;');
+    (reducedMotion.matches ? '' : 'transition:opacity 1.4s ease;');
   document.body.prepend(c);
   return c;
 }
@@ -51,11 +64,18 @@ const st = {
   W: innerWidth, H: innerHeight, scroll: scrollY, scrollPrev: scrollY,
   speed: 0, gust: 0, burst: 0, time: 0, frame: 0,
   ptr: { x: -1e4, y: -1e4, vx: 0, vy: 0, t: 0 },
-  car: null, carV: [0, 0],
+  car: null, carV: [0, 0], carScroll: scrollY,
   rects: [], shapes: new Float32Array(MAXR * 4), props: new Float32Array(MAXR * 4), n: 0,
 };
 const disposers = [];
 const on = (t, ev, fn, o) => { t.addEventListener(ev, fn, o); disposers.push(() => t.removeEventListener(ev, fn, o)); };
+function pointerField(now = performance.now()) {
+  const p = st.ptr, age = now - p.t;
+  if (!finePointer.matches || frozen || !p.t || age < 0 || age >= 1700) return { active: false, x: p.x, y: p.y, radius: 0, vx: 0, vy: 0 };
+  const fade = Math.min(1, (1700 - age) / 450);
+  const radius = 30 * fade;
+  return { active: radius > 1, x: p.x, y: p.y, radius, vx: p.vx * fade, vy: p.vy * fade };
+}
 
 // Obstacles are cached in document space and only re-measured on layout changes.
 // Boxy elements (cards) are rounded rects; text obstacles are rasterised glyph by glyph, so the air
@@ -181,7 +201,7 @@ function packRects() {
 
 // ---------- GL bootstrap ----------
 let gl, ext, fmt, R = {}, alive = true, raf = 0, glOK = false;
-const TEX = {};  // sprite textures (smoke atlas, motes, wisp)
+const TEX = {}, spriteReadyAt = {};  // sprite textures (smoke atlas, motes, wisp)
 
 function getGL(c) {
   const g = c.getContext('webgl2', { alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
@@ -274,14 +294,15 @@ void main(){
     sd = min(sd, gs);
     // halo for page text: dilate the G coverage a few CSS px
     float h = g.g;
-    // wider, softer halo so smoke never sits directly behind reading text (contrast)
-    float r1 = 4. / uPxCss, r2 = 9. / uPxCss, r3 = 16. / uPxCss;
+    // A tight, graded halo keeps small copy readable without drawing a dark duplicate
+    // outline around every letter when the smoke is brightly lit.
+    float r1 = 2. / uPxCss, r2 = 5. / uPxCss, r3 = 9. / uPxCss;
     for (int k = 0; k < 8; k++){
       float a = float(k) * .785398;
       vec2 dir = vec2(cos(a), sin(a));
-      h = max(h, .95 * texelFetch(uGlyph, clamp(ip + ivec2(dir * r1 + .5), ivec2(0), mx), 0).g);
-      h = max(h, .7 * texelFetch(uGlyph, clamp(ip + ivec2(dir * r2 + .5), ivec2(0), mx), 0).g);
-      h = max(h, .4 * texelFetch(uGlyph, clamp(ip + ivec2(dir * r3 + .5), ivec2(0), mx), 0).g);
+      h = max(h, .65 * texelFetch(uGlyph, clamp(ip + ivec2(dir * r1 + .5), ivec2(0), mx), 0).g);
+      h = max(h, .35 * texelFetch(uGlyph, clamp(ip + ivec2(dir * r2 + .5), ivec2(0), mx), 0).g);
+      h = max(h, .15 * texelFetch(uGlyph, clamp(ip + ivec2(dir * r3 + .5), ivec2(0), mx), 0).g);
     }
     dim = max(dim, h);
   }
@@ -300,9 +321,14 @@ void main(){
     if (dc < 10.) v = uCarV;
   }
   if (uPtr.w > .5){
-    float dp = length(p - uPtr.xy) - uPtr.z;
-    if (dp < sd) sd = dp;
-    if (dp < 8.) v = uPtrV;
+    // The cursor is a small physical obstruction in the same signed-distance field as the
+    // car and letters. This clears only the air immediately around it, without a cast ray.
+    vec2 r = p - uPtr.xy;
+    float radius = uPtr.z * .72;
+    if (abs(r.x) < radius + 12. && abs(r.y) < radius + 12.){
+      float dc = (length(r) - radius) * .4;
+      if (dc < sd){ sd = dc; v = uPtrV; }
+    }
   }
   o = vec4(sd, dim, v);
 }`;
@@ -340,6 +366,7 @@ const FS_ADV_VEL = FSH + LIB + `
 uniform sampler2D uVel, uMask;
 uniform vec2 uInvView, uFree;
 uniform float uDtS, uDt, uShift, uRelax, uInlet, uTime, uCell;
+uniform vec4 uPtr; uniform vec2 uPtrV;
 vec2 velAt(vec2 uv){ return (uv.x < 0. || uv.y < 0. || uv.y > 1.) ? uFree : texture(uVel, uv).xy; }
 void main(){
   vec2 v = texture(uVel, vUv).xy;
@@ -348,6 +375,17 @@ void main(){
   float n = (vnoise(vec2(vUv.y * 7., uTime * .45)) - .5) + .5 * (vnoise(vec2(vUv.y * 23., uTime * 1.3)) - .5);
   vec2 target = uFree + vec2(0., uInlet * n * length(uFree));
   nv = mix(nv, target, 1. - exp(-uDt * (uRelax + edge * 9.)));
+  if (uPtr.w > .5){
+    // Smooth potential-flow disturbance around the cursor. It affects velocity only: the
+    // dye and light masks stay intact, so there is no black cursor disk or cast shadow.
+    vec2 r = vec2(vUv.x, 1. - vUv.y) / uInvView - uPtr.xy;
+    float a2 = uPtr.z * uPtr.z, r2 = dot(r, r);
+    float k = a2 / max(r2, a2), soft = exp(-r2 / max(a2 * 7., 1.));
+    vec2 q = r * inversesqrt(max(r2, 1.));
+    vec2 bend = uFree + vec2(-uFree.x * k * (q.x*q.x - q.y*q.y), -uFree.x * k * 2. * q.x*q.y);
+    bend += uPtrV * .4 * soft;
+    nv = mix(nv, bend, (1. - exp(-uDt * 13.)) * soft);
+  }
   vec4 m = texture(uMask, vUv);
   nv = mix(nv, m.zw, 1. - smoothstep(-uCell, uCell * .5, m.x));
   o = vec4(nv, 0., 1.);
@@ -463,9 +501,8 @@ void main(){
   vec2 px = vec2(vUv.x, 1. - vUv.y) * uView;
   r = max(r, rake(px.y + uScrollNow) * smoothstep(uNozzle, uNozzle * .3, px.x));
   vec4 m = texture(uMask, vUv);
-  // smoke clings a few px over the car's outline (visible over the car); text and cards cut it cleanly
-  vec2 cq = max(abs(px - (uCarRect.xy + uCarRect.zw * .5)) - uCarRect.zw * .5, 0.);
-  r *= (uCarRect.z > 0. && cq == vec2(0.)) ? smoothstep(-7., 1., m.x) : smoothstep(0., 3., m.x);
+  // The car silhouette and text remain clear; smoke rolls along their edges, not across them.
+  r *= smoothstep(-.5, 2., m.x);
   o = vec4(max(r, 0.), 0., 1.);
 }`;
 
@@ -494,29 +531,9 @@ void main(){
   o = vec4(d * .25, 0., 1.);
 }`;
 
-// ---------- lighting: single scattering, ray-marched per step at half the dye resolution ----------
-// r: key light, marched from each point toward a source beyond the top-left corner; g: the laser
-// sheet, marched back to the inlet on the left edge. Both sum optical depth from the smoke itself
-// (Beer-Lambert) and from anything solid (headings, plates, the car's silhouette: the obstacle SDF),
-// so dense smoke shades the flow behind it and every obstacle casts a shadow shaft downstream.
-const LIGHT_SRC = (W, H) => [-0.3 * W, -0.55 * H];   // key light position, CSS px (beyond the top-left corner)
-const FS_LIGHT = FSH + `
-uniform sampler2D uDye, uMask; uniform vec2 uView, uSrc; uniform float uKd, uKo;
-float ob(vec2 q){ vec2 uv = vec2(q.x / uView.x, 1. - q.y / uView.y); return smoothstep(6., -6., texture(uMask, uv).x); }
-float dens(vec2 q){ vec2 uv = vec2(q.x / uView.x, 1. - q.y / uView.y); vec2 d = texture(uDye, uv).xy; return d.x + d.y; }
-void main(){
-  vec2 p = vec2(vUv.x, 1. - vUv.y) * uView;
-  float j = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(.06711056, .00583715))));   // static per-texel jitter
-  // key light: march toward the source, stopping where the ray leaves the viewport
-  vec2 toL = uSrc - p; float len = length(toL); vec2 dir = toL / max(len, 1e-3);
-  vec2 ex = vec2(dir.x < 0. ? -p.x / dir.x : (uView.x - p.x) / max(dir.x, 1e-4), dir.y < 0. ? -p.y / dir.y : (uView.y - p.y) / max(dir.y, 1e-4));
-  float tMax = min(len, min(ex.x, ex.y)), ds = tMax / 28., tau = 0.;
-  for (int i = 0; i < 28; i++){ vec2 q = p + dir * (float(i) + j) * ds; tau += (uKd * dens(q) + uKo * ob(q)) * ds; }
-  // laser sheet: enters from the inlet (left edge) and travels right
-  float dsx = p.x / 20., tx = 0.;
-  for (int i = 0; i < 20; i++){ vec2 q = vec2((float(i) + j) * dsx, p.y); tx += (uKd * 1.4 * dens(q) + uKo * ob(q)) * dsx; }
-  o = vec4(exp(-tau), exp(-tx), 0., 1.);
-}`;
+// The light texture is a single neutral texel. The gradient and laser sheet are analytic in
+// FS_RENDER; neither the cursor nor other obstacles cast screen-wide rays through the smoke.
+const LIGHT_SRC = (W, H) => [-0.3 * W, -0.55 * H];
 
 const FS_PREFILL = FSH + LIB + RAKE + `
 uniform vec2 uView; uniform float uScrollPrev, uDecayPx;
@@ -526,11 +543,11 @@ const FS_COPY = FSH + `uniform sampler2D uSrc; void main(){ o = texture(uSrc, vU
 const FS_FILL = FSH + `uniform vec4 uVal; void main(){ o = uVal; }`;
 
 // ---------- composite: smoke tone-map, wisp texture, laser sheet ----------
-const FS_RENDER = FSH + `
-uniform sampler2D uDye, uGlow, uVel, uMask, uUV, uWisp, uLight;
-uniform vec2 uDyeRes, uGlowRes, uView;
+const FS_RENDER = FSH + LIB + RAKE + `
+uniform sampler2D uDye, uGlow, uVel, uMask, uUV, uWisp;
+uniform vec2 uDyeRes, uView;
 uniform vec4 uCarRect;
-uniform float uFreeMag, uTime, uLaserY, uLaserW, uGain, uDim, uPhase, uWispK, uHasWisp, uDebug, uLeadS, uShiftR;
+uniform float uFreeMag, uLaserY, uLaserW, uGain, uDim, uPhase, uWispK, uHasWisp, uDebug, uLeadS, uShiftR, uScrollNow, uDecayPx, uFillFront, uFillSoft;
 uniform vec2 uInvView, uSrcPx;
 vec4 bspline(sampler2D t, vec2 uv, vec2 res){
   vec2 s = uv * res - .5, i = floor(s), f = s - i, f2 = f * f, f3 = f2 * f;
@@ -545,15 +562,25 @@ void main(){
   // Fields are as of the last solver step: undo the scroll since then, and carry the smoke along the
   // flow by the time since then (one semi-Lagrangian lookup), so every display frame moves.
   vec2 uvS = vUv - vec2(0., uShiftR);
-  vec2 uvR = uvS - texture(uVel, uvS).xy * uLeadS * uInvView;
-  vec4 m = texture(uMask, uvS);
-  if (uDebug > 1.5){ vec2 l = texture(uLight, uvS).rg; o = vec4(l.r, l.g * .5, 0., 1.); return; }   // light field
+  bool outside = any(lessThan(uvS, vec2(0.))) || any(greaterThan(uvS, vec2(1.)));
+  vec2 uvR = outside ? uvS : uvS - texture(uVel, uvS).xy * uLeadS * uInvView;
+  vec4 m = outside ? vec4(1e4, 0., 0., 0.) : texture(uMask, uvS);
+  if (uDebug > 1.5){ o = vec4(1., .5, 0., 1.); return; }   // uniform key light
   if (uDebug > .5){ o = vec4(m.x < 0. ? .5 : 0., m.y * .3, 0., .5); return; }
-  vec2 d = bspline(uDye, uvR, uDyeRes).xy * uGain;
-  vec2 g = bspline(uGlow, uvR, uGlowRes).xy * uGain;
+  // A scroll can expose a row outside the previous viewport before the next solver step.
+  // Reconstruct its page-anchored inlet instead of clamping the edge texel into a broad smear.
+  vec2 d, g;
+  if (outside){
+    vec2 fresh = rake(px.y + uScrollNow) * exp(-uDecayPx * max(px.x, 0.));
+    d = fresh * uGain; g = fresh * (.7 * uGain);
+  } else {
+    d = bspline(uDye, uvR, uDyeRes).xy * uGain;
+    // Glow is already quarter-resolution and filtered; a bilinear read is smooth enough here.
+    g = texture(uGlow, uvR).xy * uGain;
+  }
   // wisp detail from the Cycles sheet, carried by the flow (two crossfaded phases)
   float wd = 1.;
-  if (uHasWisp > .5){
+  if (uHasWisp > .5 && !outside){
     vec4 c = texture(uUV, uvR);
     float wa = abs(1. - 2. * uPhase), wb = 1. - wa;
     float sa = texture(uWisp, c.xy * vec2(.55, 1.)).a, sb = texture(uWisp, c.zw * vec2(.55, 1.) + .37).a;
@@ -562,28 +589,27 @@ void main(){
     wd = mix(1., clamp(.35 + 1.25 * w, 0., 1.6), k);
   }
   d *= wd; g *= mix(1., wd, .5);
-  float spd = length(texture(uVel, uvS).xy) / max(uFreeMag, 1e-3);
+  float spd = outside ? 1. : length(texture(uVel, uvS).xy) / max(uFreeMag, 1e-3);
   float comp = clamp(spd, .2, 2.2);
-  // key light and laser sheet, each shadowed by the smoke and obstacles between it and this point
-  vec2 lt = texture(uLight, uvS).rg;
-  float key = .22 + 1.1 * lt.r;
-  float laser = exp(-pow((px.y - uLaserY) / uLaserW, 2.)) * lt.g;
+  // Broad atmospheric key and laser sheet, with no ray-cast occlusion.
+  float key = .88 + .37 * (1. - vUv.x);
+  float laser = exp(-pow((px.y - uLaserY) / uLaserW, 2.));
   vec3 grey = vec3(.78, .85, .95), blue = vec3(.169, .482, 1.);
-  float gi = 1. - exp(-d.x * 1.5), bi = 1. - exp(-d.y * 1.7);
-  vec3 col = grey * gi * .5 + blue * bi * .95 + grey * (1. - exp(-g.x * 1.2)) * .16 + blue * (1. - exp(-g.y * 1.4)) * .42;
+  float gi = 1. - exp(-d.x * 2.1), bi = 1. - exp(-d.y * 1.7);
+  vec3 col = grey * gi * .72 + blue * bi * .95 + grey * (1. - exp(-g.x * 1.5)) * .2 + blue * (1. - exp(-g.y * 1.4)) * .42;
   col *= (.72 + .3 * comp) * key * (1. + 1.1 * laser);
-  vec2 cq = max(abs(px - (uCarRect.xy + uCarRect.zw * .5)) - uCarRect.zw * .5, 0.);
-  bool inCar = uCarRect.z > 0. && cq == vec2(0.);
-  float keep = mix(1., uDim, m.y) * (inCar ? smoothstep(-9., 2., m.x) : smoothstep(-1., 5., m.x));
+  float keep = mix(1., uDim, m.y) * smoothstep(-.5, 2., m.x);
   col *= keep;
   col += blue * laser * .010 * keep;
-  // in-scattering off the thin haze in the air: the light's shafts and the obstacles' shadows show
-  // between the smoke too, strongest nearest the source (top left) and fading across the page
+  // In-scattering fills the air between visible filaments without a hard shadow field.
   float near = exp(-length(px - uSrcPx) / (1.35 * length(uView)));
-  col += (vec3(.5, .6, .82) * .07 * lt.r * near + blue * .045 * laser) * keep;
+  col += (vec3(.5, .6, .82) * .07 * near + blue * .045 * laser) * keep;
   col += (hash(gl_FragCoord.xy + fract(uTime) * 91.) - .5) / 255.;
   col = max(col, 0.);
-  o = vec4(col, min(1., max(col.r, max(col.g, col.b)) * .22));
+  // The canvas is premultiplied; give illuminated smoke enough coverage to carry its colour.
+  float a = min(1., max(col.r, max(col.g, col.b)));
+  float reveal = 1. - smoothstep(uFillFront - uFillSoft, uFillFront + uFillSoft, px.x);
+  o = vec4(min(col, vec3(1.)), a) * reveal;
 }`;
 
 // ---------- particles: transform-feedback update (GPU only) ----------
@@ -592,8 +618,9 @@ layout(location = 0) in vec4 aS;   // x, y (CSS px, viewport), age (s), seed
 out vec4 vS;
 uniform sampler2D uVel, uMask;
 uniform vec2 uView;
-uniform float uDtS, uDt, uDy, uSpawnLeft, uLifeMin, uLifeMax, uBurst, uDormant;
-uniform vec4 uBurstRect;
+uniform float uDtS, uDt, uDy, uSpawnLeft, uWakeChance, uLifeMin, uLifeMax, uBurst, uDormant;
+uniform float uSpacing, uScroll;
+uniform vec4 uBurstRect, uWakeRect;
 uniform uint uFrame;
 uint pcg(uint v){ uint s = v * 747796405u + 2891336453u; uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u; return (w >> 22u) ^ w; }
 float rnd(inout uint s){ s = pcg(s); return float(s) / 4294967296.; }
@@ -614,7 +641,17 @@ void main(){
     if (uDormant > .5){ p = vec2(-1e4); age = 1e3; }
     else {
       float r1 = rnd(st), r2 = rnd(st);
-      p = rnd(st) < uSpawnLeft ? vec2(r1 * 10. - 4., r2 * uView.y) : vec2(r1 * uView.x, r2 * uView.y);
+      if (uWakeRect.z > 0. && rnd(st) < uWakeChance)
+        p = uWakeRect.xy + vec2(r1, r2) * uWakeRect.zw;
+      else {
+        p = rnd(st) < uSpawnLeft ? vec2(r1 * 10. - 4., r2 * uView.y) : vec2(r1 * uView.x, r2 * uView.y);
+        // Smoke seeded at a nozzle rake follows coherent stream tubes. A small share remains
+        // diffuse to reveal the turbulent wake without covering the page in random specks.
+        if (gl_VertexID % 10 < 8){
+          float lane = floor((p.y + uScroll) / uSpacing + .5) * uSpacing - uScroll;
+          p.y = clamp(lane + (rnd(st) - .5) * uSpacing * .24, 0., uView.y);
+        }
+      }
       if (textureLod(uMask, clamp(uvOf(p), 0., 1.), 0.).x < 3.) p.x = r1 * 10. - 4.;
       age = 0.; seed = fract(seed + .618034);
     }
@@ -627,7 +664,7 @@ const FS_NULL = HDR + `out vec4 o; void main(){ o = vec4(0.); }`;
 // Tracer motes: Cycles mote sprites (glow / bokeh / streak), stretched along the local velocity.
 const VS_PDRAW = HDR + `
 layout(location = 0) in vec4 aS;
-uniform sampler2D uVel, uMask, uLight;
+uniform sampler2D uVel, uMask;
 uniform vec2 uView;
 uniform float uStreak, uDpr, uLaserY, uLaserW, uAlpha, uDim, uLifeMin, uLifeMax, uSize, uLead, uDyR;
 out vec2 vT; out float vA; out vec3 vC; out float vK; out float vLen;
@@ -638,7 +675,7 @@ void main(){
   p += vc * uLead - vec2(0., uDyR);             // drawn where it is now, not where the last step left it
   float sp = length(vc); vec2 dir = sp > 1e-3 ? vc / sp : vec2(1., 0.);
   float kind = fract(seed * 5.17);
-  float k = kind < .72 ? 0. : kind < .88 ? 1. : kind < .96 ? 2. : 0.;
+  float k = kind < .84 ? 0. : kind < .94 ? 1. : kind < .98 ? 2. : 0.;
   float size = uSize * (k > .5 ? mix(2.2, 5., fract(seed * 11.3)) : mix(.9, 2.2, pow(fract(seed * 13.7), 3.)));
   size = max(size, 1.1 / uDpr);
   float len = k > .5 ? min(sp * uStreak * .25, size) : min(sp * uStreak, 42.);
@@ -653,15 +690,16 @@ void main(){
   float fade = smoothstep(0., .7, age) * smoothstep(life, life - 1., age);
   vec4 m = textureLod(uMask, clamp(uv, 0., 1.), 0.);
   fade *= smoothstep(0., 6., m.x) * mix(1., uDim, m.y);
-  vec2 lt = textureLod(uLight, clamp(uv, 0., 1.), 0.).rg;
-  float laser = exp(-pow((p.y - uLaserY) / uLaserW, 2.)) * lt.g;
-  float e = (k > .5 ? .35 : 1.) * size / (size + len * .3);
-  vA = uAlpha * fade * e * (.35 + 1.4 * laser) * mix(.45, 1.15, lt.r) * mix(.45, 1., fract(seed * 3.3));
+  float laser = exp(-pow((p.y - uLaserY) / uLaserW, 2.));
+  float e = (k > .5 ? .35 : 1.) * size / (size + len * .2);
+  vA = uAlpha * fade * e * (.62 + .55 * laser) * 1.15 * mix(.45, 1., fract(seed * 3.3));
+  if (gl_InstanceID % 10 >= 8) vA *= .42;
   vC = fract(seed * 9.1) < .24 ? vec3(.3, .58, 1.) : vec3(.86, .92, 1.);
   vK = (len > size * 1.5 && k < .5) ? 3. : k;
 }`;
 const FS_PDRAW = HDR + `
 uniform sampler2D uMotes;
+uniform float uDpr, uFillFront, uFillSoft;
 in vec2 vT; in float vA; in vec3 vC; in float vK; in float vLen;
 out vec4 o;
 void main(){
@@ -669,13 +707,16 @@ void main(){
   if (vK > 2.5){ t.x = mix(.15, .85, t.x); }            // streak cell: motion-blurred Cycles mote
   vec4 s = texture(uMotes, vec2((vK + t.x) * .25, t.y));
   float tail = vK > 2.5 ? mix(.25, 1., vT.x * vT.x) : 1.;
-  o = vec4(vC * s.rgb * vA * tail, 0.);
+  // Mote atlas is uploaded premultiplied. Carry its alpha into the canvas too: zero-alpha
+  // RGB was discarded or clamped differently by compositors, making tracers disappear.
+  float reveal = 1. - smoothstep(uFillFront - uFillSoft, uFillFront + uFillSoft, gl_FragCoord.x / uDpr);
+  o = vec4(vC * s.rgb * vA * tail, s.a * vA * tail) * reveal;
 }`;
 
 // Volumetric puffs: Cycles smoke atlas frames as soft rotating sprites that ride the flow.
 const VS_PUFF = HDR + `
 layout(location = 0) in vec4 aS;
-uniform sampler2D uVel, uMask, uLight;
+uniform sampler2D uVel, uMask;
 uniform vec2 uView;
 uniform float uAlpha, uDim, uLifeMin, uLifeMax, uSize, uGrow, uTime, uLead, uDyR;
 out vec2 vT; out float vA; out float vF; out float vBlue;
@@ -697,18 +738,28 @@ void main(){
   vF = floor(fract(seed * 17.13) * 32.);
   vec4 m = textureLod(uMask, clamp(uv, 0., 1.), 0.);
   float fade = smoothstep(0., life * .25, age) * smoothstep(life, life * .55, age);
-  vA = uAlpha * fade * mix(1., uDim, m.y) * smoothstep(-20., 30., m.x) * mix(.5, 1.15, textureLod(uLight, clamp(uv, 0., 1.), 0.).r);
+  vA = uAlpha * fade * mix(1., uDim, m.y) * smoothstep(-20., 30., m.x) * 1.15;
   vBlue = step(.8, fract(seed * 6.1));
 }`;
 const FS_PUFF = HDR + `
 uniform sampler2D uAtlas;
+uniform float uDpr, uFillFront, uFillSoft, uViewH;
+uniform vec4 uPtr;
 in vec2 vT; in float vA; in float vF; in float vBlue;
 out vec4 o;
 void main(){
   vec2 cell = vec2(mod(vF, 8.), floor(vF / 8.));
   vec4 s = texture(uAtlas, (cell + vec2(vT.x, 1. - vT.y)) / vec2(8., 4.));
   vec3 tint = mix(vec3(.8, .87, 1.), vec3(.3, .55, 1.), vBlue);
-  o = vec4(s.rgb * tint * vA, s.a * vA * .25);
+  float reveal = 1. - smoothstep(uFillFront - uFillSoft, uFillFront + uFillSoft, gl_FragCoord.x / uDpr);
+  // A large puff can overlap the cursor even when its centre is outside the mask. Clip that
+  // small overlap with the same soft local opening; the rest of the atlas is unchanged.
+  float opening = 1.;
+  if (uPtr.w > .5){
+    vec2 p = vec2(gl_FragCoord.x / uDpr, uViewH - gl_FragCoord.y / uDpr);
+    opening = smoothstep(uPtr.z * .52, uPtr.z * .9, length(p - uPtr.xy));
+  }
+  o = vec4(s.rgb * tint * vA, s.a * vA) * (reveal * opening);
 }`;
 
 // ---------- GL helpers ----------
@@ -795,6 +846,7 @@ function loadSprite(name, key, repeat) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
     TEX[key] = t;
+    spriteReadyAt[key] = performance.now();
   }, () => {});
 }
 
@@ -857,7 +909,7 @@ async function initGL() {
       mask: [VS_QUAD, FS_MASK], advVel: [VS_QUAD, FS_ADV_VEL], curl: [VS_QUAD, FS_CURL],
       vort: [VS_QUAD, FS_VORT], div: [VS_QUAD, FS_DIV], pres: [VS_QUAD, FS_PRES],
       grad: [VS_QUAD, FS_GRAD], dyeA: [VS_QUAD, FS_DYE_A], dyeB: [VS_QUAD, FS_DYE_B],
-      advUV: [VS_QUAD, FS_ADV_UV], glow: [VS_QUAD, FS_GLOW], light: [VS_QUAD, FS_LIGHT], prefill: [VS_QUAD, FS_PREFILL],
+      advUV: [VS_QUAD, FS_ADV_UV], glow: [VS_QUAD, FS_GLOW], prefill: [VS_QUAD, FS_PREFILL],
       copy: [VS_QUAD, FS_COPY], fill: [VS_QUAD, FS_FILL], render: [VS_QUAD, FS_RENDER],
       pupd: [VS_PUPD, FS_NULL, ['vS']], seed: [VS_QUAD, FS_SEED], jfa: [VS_QUAD, FS_JFA], pdraw: [VS_PDRAW, FS_PDRAW], puff: [VS_PUFF, FS_PUFF],
     });
@@ -866,23 +918,29 @@ async function initGL() {
   R.tf = gl.createTransformFeedback();
   glOK = true;
   for (const k in TEX) delete TEX[k];
+  for (const k in spriteReadyAt) delete spriteReadyAt[k];
   // phones draw puffs at ~105 CSS px: a 128 px-cell atlas carries every visible detail at a quarter the bytes
-  const sprites = Promise.all([
-    loadSprite(tierIx === 0 || Math.min(innerWidth, innerHeight) < 600 ? 'smoke-atlas-sm.webp' : 'smoke-atlas.webp', 'atlas', false),
+  // The fluid can show its first frame before the decorative sprite atlases finish decoding,
+  // especially on a slow connection. They join the running field as each texture becomes ready.
+  void Promise.allSettled([
+    loadSprite(tierIx <= 1 || Math.min(innerWidth, innerHeight) < 600 ? 'smoke-atlas-sm.webp' : 'smoke-atlas.webp', 'atlas', false),
     loadSprite('motes.webp', 'motes', false),
     loadSprite('wisp.webp', 'wisp', true),
   ]);
   build(null);
-  await sprites;
   return true;
 }
 
 // Particle pool: two float buffers ping-ponged through transform feedback.
 function pool(n, lifeMin, lifeMax, dormant) {
   const data = new Float32Array(n * 4);
+  const spacing = rakeSpacing();
   for (let i = 0; i < n; i++) {
     const life = lifeMin + (lifeMax - lifeMin) * Math.random();
-    data.set(dormant ? [-1e4, -1e4, 1e3, Math.random()] : [Math.random() * dims.W, Math.random() * dims.H, Math.random() * life, Math.random()], i * 4);
+    let y = Math.random() * dims.H;
+    if (n > 100 && i % 10 < 8) y = Math.max(0, Math.min(dims.H,
+      Math.round((y + st.scroll) / spacing) * spacing - st.scroll + (Math.random() - .5) * spacing * .24));
+    data.set(dormant ? [-1e4, -1e4, 1e3, Math.random()] : [Math.random() * dims.W, y, Math.random() * life, Math.random()], i * 4);
   }
   const mk = () => {
     const buf = gl.createBuffer();
@@ -907,7 +965,6 @@ function build(prev) {
     div: target(d.sw, d.sh, fmt.r), curl: target(d.sw, d.sh, fmt.r), uv: pair(d.sw, d.sh, fmt.rgba),
     dye: pair(d.dw, d.dh, fmt.rg), phi1: target(d.dw, d.dh, fmt.rg),
     glow: target(Math.max(8, d.dw >> 2), Math.max(8, d.dh >> 2), fmt.rg),
-    light: target(Math.max(8, d.dw >> 1), Math.max(8, d.dh >> 1), fmt.rg),
   };
   // resample the old state into the new textures so a resize doesn't pop
   if (old && old.vel) {
@@ -915,7 +972,7 @@ function build(prev) {
     R.copy.use().t('uSrc', old.vel.read.tex); draw(N.vel.read);
     R.copy.use().t('uSrc', old.dye.read.tex); draw(N.dye.read);
     R.copy.use().t('uSrc', old.uv.read.tex); draw(N.uv.read);
-    ['mask', 'div', 'curl', 'phi1', 'glow', 'glyph', 'light'].forEach(k => old[k].free());
+    ['mask', 'div', 'curl', 'phi1', 'glow', 'glyph'].forEach(k => old[k].free());
     ['vel', 'p', 'uv', 'dye', 'jfa'].forEach(k => old[k].free());
     N.parts = old.parts; N.puffs = old.puffs;
   } else {
@@ -948,10 +1005,11 @@ function freeStream() {
   return base * (1 + st.speed / 115) * (1 + 1.6 * st.gust);
 }
 function decayPx() { return 0.75 / dims.W; }
+function rakeSpacing() { return Math.max(11, Math.min(18, dims.H / 52)); }
 function rakeUniforms(P) {
-  const spacing = Math.max(11, Math.min(18, dims.H / 52));
+  const spacing = rakeSpacing();
   P.f('uSpacing', spacing).f('uSigma', Math.max(0.55, dims.dyePx * 0.42)).f('uTexelPx', dims.dyePx)
-    .f('uTime', st.time).f('uEmit', 1.0 + 0.5 * st.gust);
+    .f('uTime', st.time).f('uEmit', 0.9 + 0.45 * st.gust);
 }
 
 // ---------- simulation step ----------
@@ -965,24 +1023,27 @@ function step(dt, dy) {
   // obstacles
   packRects();
   updateGlyphs();
-  const car = st.car, p = st.ptr, ptrOn = FINE && performance.now() - p.t < 2500;
+  const car = st.car, pointer = pointerField();
   R.mask.use().f('uView', W, H).v4('uR', st.shapes).v4('uP', st.props).i('uN', st.n)
     .t('uGlyph', S.glyph.tex).t('uJfa', S.jfa.read.tex).f('uGlyphOn', 1).f('uPxCss', d.dyePx)
     .f('uGOff', 0, -(st.scroll - lastGlyphScroll) * d.dh / H)
     .f('uCar', ...(car ? [car.x, car.y, car.w, car.h] : [0, 0, 0, 0])).f('uCarV', st.carV[0] / VU, -st.carV[1] / VU).f('uCarOn', car ? (st.carMask ? 2 : 1) : 0)
-    .f('uPtr', p.x, p.y, 30, ptrOn ? 1 : 0).f('uPtrV', p.vx / VU, -p.vy / VU);
+    .f('uPtr', pointer.x, pointer.y, pointer.radius, pointer.active ? 1 : 0).f('uPtrV', pointer.vx / VU, -pointer.vy / VU);
   draw(S.mask);
 
   // velocity
   R.advVel.use().t('uVel', S.vel.read.tex).t('uMask', S.mask.tex).f('uInvView', 1 / W, 1 / H).f('uFree', U, 0)
-    .f('uDtS', dtS).f('uDt', dt).f('uShift', shift).f('uRelax', 0.18).f('uInlet', 0.01 + 0.03 * st.gust).f('uTime', st.time).f('uCell', d.cell);
+    .f('uDtS', dtS).f('uDt', dt).f('uShift', shift).f('uRelax', 0.18).f('uInlet', 0.025 + 0.03 * st.gust).f('uTime', st.time).f('uCell', d.cell)
+    .f('uPtr', pointer.x, pointer.y, pointer.radius, pointer.active ? 1 : 0)
+    .f('uPtrV', pointer.vx / VU, -pointer.vy / VU);
   draw(S.vel.write); S.vel.swap();
   R.curl.use().t('uVel', S.vel.read.tex).f('uTx', ...tx); draw(S.curl);
-  const eps = (4 + st.speed * 0.03 + 22 * st.gust) * (4 / d.cell);
+  const eps = (8 + st.speed * 0.03 + 18 * st.gust) * (4 / d.cell);
   const tip = st.tip;
   R.vort.use().t('uVel', S.vel.read.tex).t('uCurl', S.curl.tex).t('uMask', S.mask.tex).f('uTx', ...tx).f('uEps', eps).f('uDt', dt)
     .f('uView', W, H).f('uTip', tip ? tip.x + tip.s * 0.08 : -1e4, tip ? tip.y + tip.s * 0.06 : -1e4)
-    .f('uTipR', tip ? Math.max(10, tip.s * 0.16) : 1).f('uTipK', tip ? U * (5 + 4 * st.gust) * (0.75 + 0.25 * Math.sin(st.time * 7.3)) : 0);
+    .f('uTipR', tip ? Math.max(10, tip.s * 0.16) : 1)
+    .f('uTipK', tip ? U * (7 + 3 * st.gust) * (0.75 + 0.25 * Math.sin(st.time * 7.3)) : 0);
   draw(S.vel.write); S.vel.swap();
 
   // pressure solve
@@ -999,11 +1060,9 @@ function step(dt, dy) {
     .f('uDtS', dtS).f('uShift', shift).f('uScrollPrev', st.scrollPrev).f('uDecayPx', decayPx()); rakeUniforms(P); return P; };
   dyeCommon(R.dyeA.use()); draw(S.phi1);
   dyeCommon(R.dyeB.use()).t('uPhi1', S.phi1.tex).f('uDyeRes', d.dw, d.dh).f('uDecay', Math.exp(-dt * U * VU * decayPx()))
-    .f('uNozzle', 10).f('uScrollNow', st.scroll).f('uCarRect', ...carRect()).f('uDiffuse', 0.012 + 0.05 * st.gust);
+    .f('uNozzle', 10).f('uScrollNow', st.scroll).f('uCarRect', ...carRect()).f('uDiffuse', 0.007 + 0.05 * st.gust);
   draw(S.dye.write); S.dye.swap();
   R.glow.use().t('uDye', S.dye.read.tex).f('uTx', 1 / d.dw, 1 / d.dh); draw(S.glow);
-  R.light.use().t('uDye', S.dye.read.tex).t('uMask', S.mask.tex).f('uView', W, H).f('uSrc', ...LIGHT_SRC(W, H))
-    .f('uKd', 0.0045).f('uKo', 0.06); draw(S.light);
 
   // advected wisp coordinates: each phase resets once per cycle, half a cycle apart
   const period = 3.2;
@@ -1013,7 +1072,7 @@ function step(dt, dy) {
   if (reset1) S.off1 = [Math.random() * 7, Math.random() * 7];
   const o0 = S.off0 || [0, 0], o1 = S.off1 || [3.3, 1.7];
   R.advUV.use().t('uUV', S.uv.read.tex).t('uVel', S.vel.read.tex).f('uInvView', 1 / W, 1 / H).f('uView', W, H).f('uDtS', dtS).f('uShift', shift)
-    .f('uReset0', reset0 || !S.uvInit ? 1 : 0).f('uReset1', reset1 || !S.uvInit ? 1 : 0).f('uTile', 420).f('uOff', o0[0], o0[1], o1[0], o1[1]);
+    .f('uReset0', reset0 || !S.uvInit ? 1 : 0).f('uReset1', reset1 || !S.uvInit ? 1 : 0).f('uTile', 320).f('uOff', o0[0], o0[1], o1[0], o1[1]);
   draw(S.uv.write); S.uv.swap(); S.uvInit = true;
   S.phase = ph;
 
@@ -1023,20 +1082,25 @@ function step(dt, dy) {
     const src = pl.a, dst = pl.b;
     R.pupd.use().t('uVel', S.vel.read.tex).t('uMask', S.mask.tex).f('uView', W, H).f('uDtS', dtS).f('uDt', dt).f('uDy', dy)
       .f('uLifeMin', pl.lifeMin).f('uLifeMax', pl.lifeMax).f('uDormant', pl.dormant ? 1 : 0).ui('uFrame', st.frame >>> 0)
-      .f('uSpawnLeft', extra.left).f('uBurst', extra.burst ? 1 : 0).f('uBurstRect', ...(extra.rect || [0, 0, 0, 0]));
+      .f('uSpacing', rakeSpacing()).f('uScroll', st.scroll)
+      .f('uSpawnLeft', extra.left).f('uWakeChance', extra.wake).f('uWakeRect', ...wakeRect)
+      .f('uBurst', extra.burst ? 1 : 0).f('uBurstRect', ...(extra.rect || [0, 0, 0, 0]));
     gl.bindVertexArray(src.upd);
     gl.bindBuffer(gl.ARRAY_BUFFER, null);        // dst must not be bound anywhere else during capture
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, R.tf);
     gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, dst.buf);
     gl.beginTransformFeedback(gl.POINTS);
-    gl.drawArrays(gl.POINTS, 0, pl.n);
+    // A lowered draw budget also lowers the transform-feedback work, so slow hardware
+    // does not keep advecting thousands of invisible tracers every solver step.
+    gl.drawArrays(gl.POINTS, 0, pl.draw);
     gl.endTransformFeedback();
     gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
     gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
     pl.a = dst; pl.b = src;
   };
-  upd(S.parts, { left: 0.3 });
-  upd(S.puffs, { left: 0.55 });
+  const wakeRect = tip && st.car ? [tip.x - tip.s * .08, tip.y + tip.s * .08, tip.s * .16, tip.s * .5] : [0, 0, 0, 0];
+  upd(S.parts, { left: 0.5, wake: 0.12 });
+  upd(S.puffs, { left: 0.65, wake: 0.4 });
   // (the race:go sprite burst was removed: the gust now lives only in the flow field itself)
   st.burst = 0;
   gl.disable(gl.RASTERIZER_DISCARD);
@@ -1047,6 +1111,8 @@ function step(dt, dy) {
 // lead: seconds since the last solver step; rdy: CSS px scrolled since it (see frame()).
 function render(lead = 0, rdy = 0) {
   const d = dims, W = d.W, H = d.H;
+  const fill = fillFront(W);
+  const pointer = pointerField();
   const laserY = H * (0.5 + 0.36 * Math.sin(st.time * 0.09)), laserW = H * 0.085;
   gl.bindVertexArray(R.vao);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -1054,13 +1120,16 @@ function render(lead = 0, rdy = 0) {
   gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
   gl.disable(gl.BLEND);
   const wisp = TEX.wisp;
+  const spriteFade = key => Math.min(1, Math.max(0, (performance.now() - (spriteReadyAt[key] || 0)) / 600));
   R.render.use().t('uDye', S.dye.read.tex).t('uGlow', S.glow.tex).t('uVel', S.vel.read.tex).t('uMask', S.mask.tex).t('uUV', S.uv.read.tex)
     .t('uWisp', wisp || S.glow.tex)
-    .f('uDyeRes', d.dw, d.dh).f('uGlowRes', S.glow.w, S.glow.h).f('uView', W, H).f('uFreeMag', freeStream())
-    .f('uTime', st.time).f('uLaserY', laserY).f('uLaserW', laserW).f('uGain', 0.85).f('uDim', 0.08)
-    .f('uCarRect', ...carRect()).f('uPhase', S.phase || 0).f('uWispK', 0.5).f('uHasWisp', wisp ? 1 : 0).f('uDebug', +api.debug || 0)
-    .f('uLeadS', lead * VU).f('uInvView', 1 / W, 1 / H).f('uShiftR', rdy / H).t('uLight', S.light.tex)
-    .f('uSrcPx', ...LIGHT_SRC(W, H));
+    .f('uDyeRes', d.dw, d.dh).f('uView', W, H).f('uFreeMag', freeStream())
+    .f('uTime', st.time).f('uLaserY', laserY).f('uLaserW', laserW).f('uGain', 1.0).f('uDim', 0.4)
+    .f('uCarRect', ...carRect()).f('uPhase', S.phase || 0).f('uWispK', 0.68 * spriteFade('wisp')).f('uHasWisp', wisp ? 1 : 0).f('uDebug', +api.debug || 0)
+    .f('uLeadS', lead * VU).f('uInvView', 1 / W, 1 / H).f('uShiftR', rdy / H)
+    .f('uSrcPx', ...LIGHT_SRC(W, H)).f('uScrollNow', st.scroll + rdy).f('uDecayPx', decayPx())
+    .f('uFillFront', fill.front).f('uFillSoft', fill.soft);
+  rakeUniforms(R.render);
   draw(null);
   if (api.debug) return;
 
@@ -1069,21 +1138,23 @@ function render(lead = 0, rdy = 0) {
   if (TEX.atlas) {
     gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
     const puff = (pl, alpha, size, grow) => {
-      R.puff.use().t('uVel', S.vel.read.tex).t('uMask', S.mask.tex).t('uLight', S.light.tex).t('uAtlas', TEX.atlas).f('uView', W, H)
-        .f('uAlpha', alpha).f('uDim', 0.08).f('uLifeMin', pl.lifeMin).f('uLifeMax', pl.lifeMax).f('uSize', size).f('uGrow', grow).f('uTime', st.time)
-        .f('uLead', lead).f('uDyR', rdy);
+      R.puff.use().t('uVel', S.vel.read.tex).t('uMask', S.mask.tex).t('uAtlas', TEX.atlas).f('uView', W, H)
+        .f('uAlpha', alpha).f('uDim', 0.4).f('uLifeMin', pl.lifeMin).f('uLifeMax', pl.lifeMax).f('uSize', size).f('uGrow', grow).f('uTime', st.time)
+        .f('uLead', lead).f('uDyR', rdy).f('uDpr', d.dpr).f('uFillFront', fill.front).f('uFillSoft', fill.soft)
+        .f('uViewH', H).f('uPtr', pointer.x, pointer.y, pointer.radius, pointer.active ? 1 : 0);
       gl.bindVertexArray(pl.a.drw);
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, pl.draw);
     };
     const sc = Math.min(1, W / 1200);
-    puff(S.puffs, 0.085, 190 * Math.max(0.55, sc), 1.4);
+    puff(S.puffs, 0.055 * spriteFade('atlas'), 135 * Math.max(0.55, sc), 1.18);
   }
-  // tracer motes (additive)
+  // Premultiplied tracer sprites preserve their soft edges on the transparent canvas.
   if (TEX.motes) {
-    gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
-    R.pdraw.use().t('uVel', S.vel.read.tex).t('uMask', S.mask.tex).t('uLight', S.light.tex).t('uMotes', TEX.motes).f('uView', W, H)
-      .f('uStreak', 0.022).f('uDpr', d.dpr).f('uLaserY', laserY).f('uLaserW', laserW).f('uAlpha', 0.85).f('uDim', 0.1)
-      .f('uLifeMin', S.parts.lifeMin).f('uLifeMax', S.parts.lifeMax).f('uSize', 1).f('uLead', lead).f('uDyR', rdy);
+    gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    R.pdraw.use().t('uVel', S.vel.read.tex).t('uMask', S.mask.tex).t('uMotes', TEX.motes).f('uView', W, H)
+      .f('uStreak', 0.085).f('uDpr', d.dpr).f('uLaserY', laserY).f('uLaserW', laserW).f('uAlpha', 0.9 * spriteFade('motes')).f('uDim', 0.4)
+      .f('uLifeMin', S.parts.lifeMin).f('uLifeMax', S.parts.lifeMax).f('uSize', 1).f('uLead', lead).f('uDyR', rdy)
+      .f('uFillFront', fill.front).f('uFillSoft', fill.soft);
     gl.bindVertexArray(S.parts.a.drw);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, S.parts.draw);
   }
@@ -1104,21 +1175,22 @@ function readInputs(dt) {
   const cb = st.carMask || window.__carBounds;
   if (cb && cb.w > 4 && cb.h > 4) {
     if (st.car && dt > 0) {
-      const vx = ((cb.x + cb.w / 2) - (st.car.x + st.car.w / 2)) / dt, vy = ((cb.y + cb.h / 2) - (st.car.y + st.car.h / 2)) / dt;
+      const vx = ((cb.x + cb.w / 2) - (st.car.x + st.car.w / 2)) / dt;
+      // Bounds are in viewport space, but the fluid has already been reprojected by the page scroll.
+      // Subtract that camera motion or a quick scroll injects a false, violent car wake at rest.
+      const vy = ((cb.y + cb.h / 2) - (st.car.y + st.car.h / 2) + (scrollY - st.carScroll)) / dt;
       st.carV[0] += (Math.max(-3000, Math.min(3000, vx)) - st.carV[0]) * 0.3;
       st.carV[1] += (Math.max(-3000, Math.min(3000, vy)) - st.carV[1]) * 0.3;
     }
     st.car = { x: cb.x, y: cb.y, w: cb.w, h: cb.h };
   } else { st.car = null; st.carV = [0, 0]; }
+  st.carScroll = scrollY;
   st.ptr.vx *= Math.exp(-dt * 6); st.ptr.vy *= Math.exp(-dt * 6);
 }
 function frame(now) {
   raf = requestAnimationFrame(frame);
-  // Fixed-timestep solver: the fluid always advances in exact 1/60 s steps and frame-time wobble is
-  // absorbed by the accumulator, so jittery frames never shake the smoke. Drawing happens on every
-  // display frame (120 Hz and up included): between steps the smoke and particles are drawn carried
-  // along the flow by the time since the last step, and the page's scroll since then is applied at
-  // draw time. Motion is continuous at any refresh rate for the solver cost of 60 Hz.
+  // Fixed per-tier solver step, with render-time advection between steps. Phones can keep display-rate
+  // motion without paying for sixty full pressure solves a second.
   const real = Math.min(0.1, Math.max(0, (now - (last || now - FIXED * 1000)) / 1000));
   last = now;
   if (real) vsync = refreshInterval(real);
@@ -1139,25 +1211,25 @@ function frame(now) {
   window.__windFlow = { speed: Math.min(1, freeStream() / (base * 4)), gust: Math.min(1, st.gust) };
   render(Math.min(acc, FIXED), n ? 0 : dy);
   if (!shown) { shown = true; canvas.style.opacity = '1'; ready(); }
-  // Adaptive quality, last resort only. The smoke is a small share of the GPU (the car's resolution
-  // governor absorbs normal overload), so it sheds only when frames run at under half the display's
-  // rate for ~3 s, never below its tier minus 8 pressure iterations or 60% of the particles, and it
-  // gives both back after a stretch of headroom.
+  // Shed solver passes first; preserve the tracer field until pressure and rate have reached their
+  // lower bounds. Restore visible particles first after sustained headroom.
   frameEma += (dt - frameEma) * 0.1;
-  slow = frameEma > vsync * 1.9 ? slow + 1 : Math.max(0, slow - 2);
+  slow = frameEma > Math.max(1 / 60, vsync) * 1.25 ? slow + 1 : Math.max(0, slow - 2);
   roomy = frameEma < vsync * 1.1 ? roomy + 1 : 0;
-  if (roomy > 300 && (S.iters < T.iters || S.parts.draw < S.parts.n)) {
+  if (roomy > 300 && (solverHz < T.hz || S.iters < T.iters || S.parts.draw < S.parts.n)) {
     roomy = 0;
-    if (S.iters < T.iters) S.iters = Math.min(T.iters, S.iters + 4);
-    else S.parts.draw = Math.min(S.parts.n, Math.round(S.parts.draw / 0.8));
+    if (S.parts.draw < S.parts.n) S.parts.draw = Math.min(S.parts.n, Math.round(S.parts.draw / 0.8));
+    else if (S.iters < T.iters) S.iters = Math.min(T.iters, S.iters + 2);
+    else { solverHz = Math.min(T.hz, solverHz + 15); FIXED = 1 / solverHz; }
   }
-  if (slow > 3 / vsync) {
+  if (slow > 1.5 / vsync) {
     slow = 0; roomy = 0;
-    if (S.parts.draw > S.parts.n * 0.6) S.parts.draw = Math.max(Math.round(S.parts.n * 0.6), Math.round(S.parts.draw * 0.8));
-    else if (S.iters > Math.max(10, T.iters - 8)) S.iters -= 4;
+    if (solverHz > 30) { solverHz = Math.max(30, solverHz - 15); FIXED = 1 / solverHz; }
+    else if (S.iters > Math.max(6, T.iters - 8)) S.iters = Math.max(6, S.iters - 2);
+    else if (S.parts.draw > S.parts.n * 0.6) S.parts.draw = Math.max(Math.round(S.parts.n * 0.6), Math.round(S.parts.draw * 0.8));
   }
 }
-const FIXED = 1 / 60;
+let solverHz = TIERS[tierIx].hz, FIXED = 1 / solverHz;
 let acc = 0, frameEma = 1 / 60, vsync = 1 / 60, roomy = 0;
 // Display refresh interval: the median of the fastest sixth of the last 120 frames, snapped to a
 // standard rate. A running minimum was fooled by one back-to-back pair of frames after a hitch, which
@@ -1171,13 +1243,16 @@ function refreshInterval(dt) {
 function start() { if (!raf && alive && glOK && !frozen && !document.hidden) { last = 0; acc = FIXED; raf = requestAnimationFrame(frame); } }
 function stop() { cancelAnimationFrame(raf); raf = 0; }
 
-// Reduced motion: settle the flow offscreen, show one still frame; refresh after scrolling stops.
-let stillTimer = 0;
+// Reduced motion: keep the last field visible and reproject it when the page moves. Re-seeding
+// the dye after a scroll made the atmosphere visibly snap back to straight lines at the idle timer.
+let stillTimer = 0, frozenScrollFrame = 0;
 function still(steps) {
   if (!glOK) return;
-  st.scrollPrev = st.scroll = scrollY;
-  prefill();
-  for (let i = 0; i < steps; i++) { st.time += 1 / 60; st.frame++; step(1 / 60, 0); }
+  readInputs(0); // A frozen frame still needs the current visible car, not stale hero geometry.
+  st.carV = [0, 0];
+  const dy = scrollY - st.scroll;
+  st.scrollPrev = st.scroll; st.scroll = scrollY;
+  for (let i = 0; i < steps; i++) { st.time += 1 / 60; st.frame++; step(1 / 60, i === 0 ? dy : 0); }
   render();
   canvas.style.opacity = '1';
   window.__windFlow = { speed: 0, gust: 0 };    // frozen: car.js should idle too
@@ -1185,58 +1260,104 @@ function still(steps) {
 }
 
 // ---------- wiring ----------
-on(window, 'resize', () => { if (!glOK) return; requestAnimationFrame(() => { if (!glOK) return; const d = sizes(); if (d.W !== dims.W || d.H !== dims.H || d.cw !== canvas.width) { build(true); if (frozen) still(60); } queueMeasure(); }); });
+on(window, 'resize', () => { if (!glOK) return; requestAnimationFrame(() => { if (!glOK) return; const d = sizes(); if (d.W !== dims.W || d.H !== dims.H || d.cw !== canvas.width) { build(true); if (frozen) still(8); } queueMeasure(); }); });
 on(window, 'scroll', () => {
-  if (frozen && glOK) { canvas.style.opacity = '0'; clearTimeout(stillTimer); stillTimer = setTimeout(() => { measure(); still(70); }, 220); }
+  if (frozen && glOK) {
+    if (!frozenScrollFrame) frozenScrollFrame = requestAnimationFrame(() => {
+      frozenScrollFrame = 0;
+      if (frozen && glOK) render(0, scrollY - st.scroll);
+    });
+    clearTimeout(stillTimer); stillTimer = setTimeout(() => still(1), 180);
+  }
 }, { passive: true });
+// The cursor acts as a small moving body in the existing obstacle field. Events only update two
+// coordinates and a filtered velocity; the pressure solver and tracer advection do the visual work.
 on(window, 'pointermove', e => {
-  if (!FINE) return;
-  const p = st.ptr, t = performance.now(), dt = Math.max(8, t - (p.t || t - 16)) / 1000;
-  if (t - p.t < 200) { p.vx += ((e.clientX - p.x) / dt - p.vx) * 0.5; p.vy += ((e.clientY - p.y) / dt - p.vy) * 0.5; }
-  p.vx = Math.max(-2500, Math.min(2500, p.vx)); p.vy = Math.max(-2500, Math.min(2500, p.vy));
+  if (!finePointer.matches || frozen || e.pointerType === 'touch') return;
+  const p = st.ptr, t = performance.now();
+  const elapsed = t - p.t, dx = e.clientX - p.x, dy = e.clientY - p.y;
+  if (elapsed > 0 && elapsed < 160 && Math.hypot(dx, dy) < 220) {
+    const dt = Math.max(8, elapsed) / 1000;
+    p.vx += (Math.max(-900, Math.min(900, dx / dt)) - p.vx) * .45;
+    p.vy += (Math.max(-900, Math.min(900, dy / dt)) - p.vy) * .45;
+  } else p.vx = p.vy = 0;
   p.x = e.clientX; p.y = e.clientY; p.t = t;
 }, { passive: true });
-on(window, 'race:go', () => { st.gust = 1; st.burst = 1; [700, 1600, 2600].forEach(t => setTimeout(() => alive && measure(), t)); });
-// re-measure after scrolling settles and again once reveal animations have finished
-let scrollEnd = 0;
-on(window, 'scroll', () => { clearTimeout(scrollEnd); scrollEnd = setTimeout(() => { measure(); setTimeout(() => alive && measure(), 900); }, 180); }, { passive: true });
+on(window, 'pointerdown', e => {
+  if (e.pointerType === 'touch') { st.ptr.t = 0; st.ptr.vx = st.ptr.vy = 0; }
+}, { passive: true });
+on(window, 'blur', () => { st.ptr.t = 0; st.ptr.vx = st.ptr.vy = 0; });
+on(window, 'race:go', () => { [700, 1600, 2600].forEach(t => setTimeout(() => alive && measure(), t)); });
+// Glyphs and obstacle rectangles are cached in document space. Scrolling translates that cache;
+// re-reading every text rectangle at scroll stop caused a visible main-thread hitch.
 on(window, 'race:reset', () => { st.gust = 0; queueMeasure(); });
+// When the car finishes after the tunnel (especially on a slow connection), a running field picks up
+// its mask on the next step. A paused field needs a one-time still-frame refresh after the car draws.
+on(window, 'car:ready', () => {
+  for (const delay of [120, 500]) setTimeout(() => {
+    if (!alive || !frozen || !glOK) return;
+    const car = window.__carMask || window.__carBounds;
+    if (car?.w > 4 && (window.__carMask !== st.carMask || !st.car)) still(8);
+  }, delay);
+});
+on(window, 'car:unavailable', () => { if (frozen && glOK) still(8); });
 function setFrozen(f) {
-  f = f || REDUCE;
+  f = f || reducedMotion.matches;
   if (f === frozen) return;
   frozen = f;
-  if (frozen) { stop(); if (glOK) render(); }   // keep the current smoke on screen, just stop it
-  else { canvas.style.opacity = '1'; start(); }
+  if (frozen) { st.ptr.t = 0; st.ptr.vx = st.ptr.vy = 0; }
+  if (frozen) { stop(); fb?.stop(); if (glOK) render(); } // Freeze; never remove the visible atmosphere.
+  else {
+    canvas.style.opacity = '1';
+    if (!glOK && !fb) { fb = fallback2D(); ready(); }
+    fb ? fb.start() : start();
+  }
 }
 on(window, 'motion:toggle', e => setFrozen(!!(e.detail && e.detail.paused)));
+on(reducedMotion, 'change', () => setFrozen(userPaused()));
 const mo = new MutationObserver(() => setFrozen(userPaused()));
 mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-motion'] });
 on(document, 'visibilitychange', () => { document.hidden ? stop() : start(); });
-on(canvas, 'webglcontextlost', e => { e.preventDefault(); stop(); glOK = false; });
-on(canvas, 'webglcontextrestored', () => { initGL().then(ok => { if (ok) frozen ? still(60) : start(); }); });
+on(canvas, 'webglcontextlost', e => { e.preventDefault(); stop(); glOK = false; document.documentElement.classList.remove('wind-ready'); });
+on(canvas, 'webglcontextrestored', async () => {
+  try {
+    if (await initGL()) { frozen ? still(8) : start(); ready(); return; }
+  } catch (error) { console.warn('[windtunnel] retaining atmosphere after restore failure:', error); }
+  glOK = false;
+  try { fb = fallback2D(); } catch (error) { console.warn('[windtunnel] still fallback:', error); }
+  ready();
+});
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => alive && measure());
 const ro = new ResizeObserver(queueMeasure); ro.observe(document.body);
-const ival = setInterval(() => { if (!document.hidden) measure(); }, 3000);   // safety net for late layout shifts
+// ResizeObserver + font and scroll events cover layout changes; no periodic full-page remeasure.
 
 const api = {
   debug: false,
   get tier() { return T && T.name; },
-  get quality() { return S.parts && { iters: S.iters, particles: S.parts.draw, of: S.parts.n, hz: Math.round(1 / vsync) }; },
+  get frozen() { return frozen; },
+  get frame() { return st.frame; },
+  get quality() { return S.parts && { iters: S.iters, particles: S.parts.draw, of: S.parts.n, hz: Math.round(1 / vsync), solverHz }; },
   get dims() { return dims; },
   get stats() { return { rects: st.rects.length, glyphs: glyphs.list.length, solid: glyphs.list.filter(g => g.s).length, tip: st.tip }; },
   destroy() {
-    alive = false; stop(); clearInterval(ival); ro.disconnect(); mo.disconnect(); disposers.forEach(f => f());
+    alive = false; stop(); cancelAnimationFrame(frozenScrollFrame); clearTimeout(stillTimer); ro.disconnect(); mo.disconnect(); disposers.forEach(f => f());
     if (glOK) { try { gl.getExtension('WEBGL_lose_context')?.loseContext(); } catch (e) {} }
     glOK = false; canvas.remove(); if (fb) fb.stop();
     if (window.__windTunnel === api) delete window.__windTunnel;
   },
 };
+if (new URLSearchParams(location.search).has('gpu')) {
+  Object.defineProperty(api, 'pointer', { get: () => pointerField() });
+  Object.defineProperty(api, 'carVelocity', { get: () => [...st.carV] });
+  Object.defineProperty(api, 'flow', { get: () => ({ scroll: st.scroll, carVelocity: [...st.carV], gust: st.gust, speed: st.speed }) });
+  Object.defineProperty(api, 'fill', { get: () => fillFront(dims.W || innerWidth) });
+}
 window.__windTunnel = api;
 
 // ---------- Canvas2D fallback: streak tracers bent around obstacle rects ----------
 let fb = null;
 function fallback2D() {
-  if (REDUCE) return null;
+  if (reducedMotion.matches) return null;
   const c2 = makeCanvas(); canvas.remove(); canvas = c2;
   const ctx = canvas.getContext('2d'); if (!ctx) return null;
   const n = innerWidth < 700 ? 140 : 320, P = [];
@@ -1245,10 +1366,14 @@ function fallback2D() {
   size(); on(window, 'resize', size);
   for (let i = 0; i < n; i++) P.push({ x: Math.random() * W, y: Math.random() * H, b: Math.random() < 0.2 });
   const tick = t => {
+    id = 0;
+    if (document.hidden || frozen) return;
     id = requestAnimationFrame(tick);
     const dt = Math.min(0.033, (t - (lt || t)) / 1000 || 0.016); lt = t;
-    const dy = scrollY - ly; ly = scrollY; packRects();
+    const dy = scrollY - ly; ly = scrollY; st.scroll = scrollY; packRects();
     const U = 160 * (1 + (+window.__speed || 0) / 115);
+    const pointer = pointerField(t);
+    const fill = fillFront(W, t);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.globalCompositeOperation = 'destination-out'; ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.fillRect(0, 0, W, H);
     if (dy) { ctx.globalCompositeOperation = 'copy'; ctx.drawImage(canvas, 0, -dy * dpr, canvas.width, canvas.height, 0, 0, W, H); }
@@ -1263,30 +1388,63 @@ function fallback2D() {
         const dd = Math.max(qx, qy);
         if (dd < 50 && dd > -h) { const s = Math.sign(p.y - cy) || 1, k = Math.exp(-Math.max(0, dd) / 22); vy += s * U * 0.9 * k * (qx < 0 ? 1 : Math.exp(-qx / 40)); }
       }
+      if (pointer.active) {
+        const dx = p.x - pointer.x, dy = p.y - pointer.y, r2 = dx * dx + dy * dy;
+        if (r2 < 8100) {
+          const k = (1 - r2 / 8100) ** 2, inv = 1 / Math.max(12, Math.sqrt(r2));
+          vx += (dx * inv * U * .35 + pointer.vx * .25) * k;
+          vy += (dy * inv * U * .8 + pointer.vy * .25) * k;
+        }
+      }
       const x0 = p.x, y0 = p.y;
       p.x += vx * dt; p.y += vy * dt;
       if (p.x > W + 10 || p.y < -20 || p.y > H + 20) { p.x = -Math.random() * 30; p.y = Math.random() * H; continue; }
-      ctx.strokeStyle = p.b ? 'rgba(43,123,255,0.5)' : 'rgba(210,222,240,0.22)';
+      const edge = Math.max(0, Math.min(1, (fill.front - p.x) / (2 * fill.soft) + .5));
+      const reveal = edge * edge * (3 - 2 * edge);
+      if (reveal < .01) continue;
+      ctx.strokeStyle = p.b ? `rgba(43,123,255,${(0.5 * reveal).toFixed(3)})` : `rgba(210,222,240,${(0.22 * reveal).toFixed(3)})`;
       ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(p.x, p.y); ctx.stroke();
+    }
+    if (pointer.active) {
+      // The 2D fallback has no distance field. Clear just the cursor footprint after its
+      // streaks draw so it retains the same local opening without a dark cast ray.
+      ctx.globalCompositeOperation = 'destination-out';
+      const r = pointer.radius;
+      const hole = ctx.createRadialGradient(pointer.x, pointer.y, r * .5, pointer.x, pointer.y, r * .9);
+      hole.addColorStop(0, 'rgba(0,0,0,1)'); hole.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = hole; ctx.beginPath(); ctx.arc(pointer.x, pointer.y, r * .9, 0, Math.PI * 2); ctx.fill();
     }
   };
   canvas.style.opacity = '1';
   id = requestAnimationFrame(tick);
-  return { stop() { cancelAnimationFrame(id); } };
+  const startFallback = () => { if (!id && !frozen && !document.hidden) id = requestAnimationFrame(tick); };
+  on(document, 'visibilitychange', startFallback);
+  on(window, 'motion:toggle', startFallback);
+  return { stop() { cancelAnimationFrame(id); id = 0; }, start: startFallback };
 }
 
 // ---------- boot ----------
-// main.js holds the start lights until `wind:ready` (first frame on screen, or no smoke at all).
+// main.js starts this module once font metrics are ready; the car mask can join later.
 let readySent = false;
-function ready() { if (!readySent) { readySent = true; dispatchEvent(new Event('wind:ready')); } }
+function ready() {
+  if (glOK || fb) document.documentElement.classList.add('wind-ready');
+  if (!readySent) { readySent = true; dispatchEvent(new Event('wind:ready')); }
+}
 measure();
 try {
   if (await initGL()) {
-    if (frozen) still(90);
-    else { for (let i = 0; i < (tierIx ? 30 : 12); i++) { st.time += 1 / 60; step(1 / 60, 0); } start(); }
+    readInputs(FIXED); measure(); // Seed against the final car silhouette, not an empty domain.
+    // Settle the pressure field in yielded batches before revealing the animated particles.
+    // This is a low-resolution 2D stable-fluid visual approximation, not validated 3D CFD.
+    const warmupBatches = tierIx <= 1 ? 3 : tierIx === 2 ? 5 : 6;
+    for (let batch = 0; batch < warmupBatches && glOK && alive; batch++) {
+      for (let i = 0; i < 4; i++) { st.time += FIXED; step(FIXED, 0); }
+      await new Promise(resolve => requestAnimationFrame(resolve));
+    }
+    if (glOK) { frozen ? still(1) : start(); }
   } else { glOK = false; fb = fallback2D(); ready(); }
 } catch (e) {
-  console.warn('[windtunnel] disabled', e);
+  console.warn('[windtunnel] using permanent fallback:', e);
   glOK = false; try { fb = fallback2D(); } catch (e2) {}
   ready();
 }

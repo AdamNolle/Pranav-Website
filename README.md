@@ -1,189 +1,73 @@
-<p align="center">
-  <a href="https://adamnolle.github.io/Pranav-Website/">
-    <img src="docs/hero.webp" alt="The site's opening screen: Pranav Kondapaneni's name in chrome lettering beside his blue-and-black F1 car in a wind-tunnel studio." width="100%">
-  </a>
-</p>
+# Pranav Kondapaneni
 
-<h1 align="center">Pranav Kondapaneni</h1>
+**Software Engineer at J.B. Hunt · M.S. Computer Science at Georgia Tech**
 
-<p align="center">
-  <b>Software Engineer at J.B. Hunt Transport · CS at Georgia Tech</b><br>
-  A portfolio built like a night session in an F1 wind tunnel.
-</p>
+[Visit the site](https://adamnolle.github.io/Pranav-Website/) · [Connect on LinkedIn](https://www.linkedin.com/in/pranavkondapaneni/)
 
-<p align="center">
-  <a href="https://adamnolle.github.io/Pranav-Website/"><b>🏁 View the live site: adamnolle.github.io/Pranav-Website</b></a>
-</p>
+A personal portfolio built around an interactive race car and a full-page wind tunnel. The site presents Pranav’s experience, skills, education, and contact information in a single responsive page.
 
-<p align="center">
-  <a href="https://adamnolle.github.io/Pranav-Website/"><img alt="Live on GitHub Pages" src="https://img.shields.io/badge/live-GitHub%20Pages-2b7bff?style=for-the-badge&labelColor=0c0f14"></a>
-  <img alt="No build step" src="https://img.shields.io/badge/build%20step-none-7fb0ff?style=for-the-badge&labelColor=0c0f14">
-  <img alt="WCAG 2.2 AA" src="https://img.shields.io/badge/WCAG-2.2%20AA-3ddc97?style=for-the-badge&labelColor=0c0f14">
-  <img alt="Follows the Apple Human Interface Guidelines" src="https://img.shields.io/badge/Apple-HIG-eef2f7?style=for-the-badge&labelColor=0c0f14">
-</p>
+![Pranav Kondapaneni's race-car portfolio hero](assets/readme-preview.webp)
 
----
+## The experience
 
-## The idea
+- **Airflow:** A stream fills the page from the left on each visit. Scrolling changes its pace; moving a mouse pushes the air aside. The tunnel adjusts its detail to the device and connection.
+- **Car:** Drag to rotate it with a mouse or finger. On a keyboard, use the arrow keys to turn and **Home** to reset. Vertical touch gestures still scroll the page.
+- **Start lights:** Run the five-light sequence from the hero. The speed gauge and shift lights respond to scrolling.
+- **Portrait card:** A subtle foil effect follows mouse movement or a horizontal touch drag.
+- **Motion controls:** Pause Motion keeps a still scene, and the site respects the system’s reduced-motion setting.
 
-A recruiter should know who Pranav is within five seconds and be one click from LinkedIn. Everything else is the fun part:
+The page remains readable if 3D rendering is unavailable. A responsive car poster appears first and stays in place if the model cannot load.
 
-- **Lights out.** Five red start lights count down, the car rolls in and brakes, and the name flies into place in chrome. Scroll, tap or press a key and the intro lands at once.
-- **Wind tunnel.** Real-time smoke and tracer particles (a WebGL2 stable-fluids solver) stream across the whole page and bend around the headlines and the car.
-- **The car.** Pranav's own 2024–25-regulation F1 car, modelled procedurally in Blender and lit in a studio with softboxes. It carries his livery, number 7, and the J.B. Hunt, Georgia Tech and Missouri S&T marks.
-- **Telemetry.** Your scroll speed drives the speedometer, the gear readout and the shift lights across the top edge.
-- **Brushed metal.** The cards are anodised graphite plates rendered live with anisotropic GGX, and their highlight follows your pointer.
+## Run locally
 
-<p align="center">
-  <img src="docs/sections.webp" alt="Two desktop sections: the Experience timing tower, and the Contact section with its team-radio panel and Connect on LinkedIn button." width="100%">
-</p>
-
-## On a phone
-
-The phone layout frames the car above the name and stacks the stats. It loads a lighter model and smoke atlas and holds 60 fps in the hero.
-
-<p align="center">
-  <img src="docs/phone.webp" alt="Four phone screens: the hero, the About section with Pranav's portrait, Skills and languages, and Contact." width="100%">
-</p>
-
-## The car
-
-<p align="center">
-  <img src="docs/car.webp" alt="Cycles studio render of the car from the front three-quarter view." width="100%">
-</p>
-
-`blender/build_car.py` builds the car from code, with no hand modelling. It is checked against real 2024–25 dimensions:
-
-| | |
-| --- | --- |
-| Length × width × height | 5.57 m × 2.02 m × ~0.96 m |
-| Wheelbase / tyres | 3.60 m / 720 mm |
-| Bodywork | B-spline sections lofted with monotone-cubic stations: taut surfaces with crisp shoulder lines |
-| Livery | One baked UV texture set, from an electric-blue nose through gloss navy to a satin-black rear, with a silver pinstripe. It also carries Cycles ray-traced ambient occlusion, so crevices and undercuts darken as in a path-traced render |
-| Sponsors | J.B. Hunt on the sidepods, endplates and DRS flap; Georgia Tech on the engine cover and endplates; Missouri S&T on the nose and front wing. Phones get a wordmark-only J.B. Hunt so it stays crisp at small sizes |
-| Web delivery | Draco-compressed GLB with WebP textures (`car.glb` ≈ 1.5 MB; `car_mobile.glb` ≈ 1.0 MB, decimated for phones) |
-
-## Accessibility and the Apple Human Interface Guidelines
-
-The site targets **WCAG 2.2 AA** and follows Apple's [Human Interface Guidelines](https://developer.apple.com/design/human-interface-guidelines). It respects the settings people already chose on their devices.
-
-| Setting or guideline | What the site does |
-| --- | --- |
-| **Larger Text / Dynamic Type** | Reading text is sized in `rem`; on iPhone and iPad, the root size follows the system text size. Display headings grow only until their longest word fills the column, so nothing clips at 200%. |
-| **Reduce Motion** | The car is parked, the smoke is a still frame, and reveals, hover movement and pulsing lights are off. |
-| **Pause Motion** | A persistent button stops the smoke, the car and every looping animation, and it's remembered across visits. |
-| **Increase Contrast** | Secondary text turns near-white, hairlines become real edges, backings go opaque and the smoke dims. |
-| **Reduce Transparency** | The bars and chips go fully opaque. |
-| **Controls** | Every control is at least 44 × 44 pt, has a press state and a visible focus ring, and uses a verb label ("Replay Intro", "Connect on LinkedIn"). Content that isn't interactive never looks tappable. |
-| **Layout** | The nav uses a scroll edge effect instead of a hard-edged bar. Margins respect the notch and home-indicator safe areas, and the layout holds from 320 pt to ultrawide. |
-| **Screen readers** | Semantic landmarks, a skip link, real headings and lists, decorative canvases hidden, and a keyboard-operable menu that closes with Esc. |
-| **Contrast over the smoke** | Every text element was measured against the live smoke at every scroll position: all ≥ 4.5:1, worst case 5.5:1. |
-
-## Performance
-
-The first load is staged so the intro always plays smoothly, even on slow phones:
-
-1. **First paint** needs only the HTML, the CSS and two self-hosted fonts. The name's silhouette and the job title appear immediately.
-2. **The grid forms.** While the start lights hold, the car and the smoke each compile their shaders, build geometry and upload textures, one after the other.
-3. **The intro plays** on an idle main thread. On a slow connection the lights start anyway after 2.6 s, and anything still loading waits until the name has landed.
-
-Measured on a phone with 4× CPU throttling, before → after:
-
-| | Before | After |
-| --- | --- | --- |
-| First paint (fast network) | 384 ms | **184 ms** |
-| Frames over 50 ms during the intro | 5 (up to 200 ms) | **0** |
-| Same on a 4×-throttled laptop | 9 (up to 567 ms) | **0** |
-| Layout shift (slow 4G) | 0.0071 | **0** |
-| JavaScript downloaded | 492 KB | **212 KB** |
-| Requests / third-party origins | 38 / 3 | **21 / 0** |
-
-How:
-- three.js ships as a tree-shaken bundle of only what `car.js` uses (`vendor/three-car.min.js`, 165 KB gzip, replacing a 430 KB CDN import chain).
-- Fonts are self-hosted with metric-matched fallbacks, so nothing reflows when they swap in.
-- Shaders compile in parallel off the main thread (`KHR_parallel_shader_compile` / `compileAsync`), and one warm-up frame covers the shadow and post-processing programs.
-- Building the car and uploading its textures yield between steps, so none of it becomes one long frame.
-
-It also runs at the display's full refresh rate, including 120 Hz ProMotion screens:
-- **Smoke and particles** draw on every display frame. The fluid still steps 60 times a second; between steps each frame is carried along the flow, so motion is continuous at any refresh rate for 60 Hz solver cost.
-- **The chrome highlight on the name** moves a masked copy of the name by opposite transforms, so the page never repaints. Repainting the gradient letters every frame had cost up to 0.5 s GPU stalls.
-- **The car's edge fade into the page** is drawn in WebGL. A CSS mask on a live canvas forces an offscreen composite every frame.
-- **The smoke is lit by ray-marched light, not a brightening band.** Each step, every point marches toward a key light above the top-left and back along the laser sheet to the inlet. It accumulates optical depth from the smoke (Beer–Lambert) and from every heading, card and the car's silhouette, so dense smoke self-shadows and obstacles cast light shafts and shadows through the flow and haze.
-- **The car's resolution adapts:** full 2× quality while frames fit the display's budget, stepping down (never below 1×) if they don't. A 60 Hz display keeps full quality.
-
-## Run it locally
+The published site is plain HTML, CSS, and JavaScript. Serving it does not require a build step.
 
 ```bash
-python3 tools/serve.py        # → http://127.0.0.1:8765/
+python3 tools/serve.py
+# Open http://127.0.0.1:8765/
 ```
 
-It's plain HTML, CSS and ES modules, so there's nothing to install. The dev server gzips responses the way GitHub Pages does, so local load timings match production. (`python3 -m http.server` works too, but it drops some of the parallel texture requests.)
+Pass a different port if needed: `python3 tools/serve.py 8767`.
 
-## How it's built
+## Check changes
 
-| Part | Source |
+```bash
+npm ci
+npx playwright install chromium
+npm test
+```
+
+The browser suite checks responsive layouts, pointer and touch interactions, keyboard controls, motion preferences, loading fallbacks, and common regressions. It writes screenshots and frame samples to the ignored `tests/artifacts/` directory. See [local validation notes](tests/VALIDATION.md) for the measured environment and its limits.
+
+The suite can also use an existing browser and server:
+
+```bash
+BROWSER_PATH="/path/to/chromium" BASE_URL="http://127.0.0.1:8765" npm test
+```
+
+## How it is built
+
+| Part | Main files |
 | --- | --- |
-| Page, layout, accessibility | `index.html`, `styles.css`, `main.js` |
-| 3D car in the hero (three.js) | `car.js` ← `assets/car.glb`, built by `blender/build_car.py` |
-| Wind-tunnel smoke and tracers (WebGL2 stable fluids) | `windtunnel.js` ← sprites from `blender/build_smoke.py` |
-| Brushed-metal plates (WebGL, anisotropic GGX) | `metal.js` ← textures from `blender/build_metal.py` |
-| PK Wide, the display typeface | `assets/fonts/pk-wide*.woff2`, drawn in code by `tools/build_font.py` |
-| three.js subset + Draco decoder | `vendor/`, built by `tools/build_three.mjs` from what `car.js` imports |
-| Design contract and backlog | `DESIGN.md`, `BACKLOG.md` |
+| Content and page structure | [`index.html`](index.html) |
+| Layout, typography, and visual details | [`styles.css`](styles.css), [`refinements.css`](refinements.css) |
+| Navigation, lights, telemetry, and portrait card | [`main.js`](main.js) |
+| Interactive car and 3D scene | [`car.js`](car.js) |
+| Fluid flow and particles | [`windtunnel.js`](windtunnel.js) |
+| Car asset generation | [`blender/build_car.py`](blender/build_car.py) |
+| Browser checks | [`tests/site.cjs`](tests/site.cjs) |
 
-<details>
-<summary><b>Rebuilding the assets</b></summary>
+The car renders when it moves and rests when idle or offscreen. The wind tunnel scales its particle count and solver rate for smaller screens and slower connections. Its flow is a visual simulation, not an aerodynamic analysis. Models, textures, scripts, and fonts are served from this repository.
 
-<br>
-
-The assets are built with Blender 5.2, from the repo root:
+To rebuild the procedural car or the trimmed three.js bundle, use Blender and the project scripts:
 
 ```bash
-# car: exports assets/car.glb + assets/car_mobile.glb, bakes the contact shadow,
-# and optionally renders Cycles previews to blender/preview_<view>.png
-blender --background --python blender/build_car.py -- --render 3q side rear
-blender --background --python blender/build_car.py -- --no-bake     # skip the shadow bake
-
-blender --background --python blender/build_metal.py   # metal plate textures
-blender -b --factory-startup -P blender/build_smoke.py   # smoke sprite atlas
-
-pip install fonttools brotli
-python3 tools/build_font.py                             # PK Wide (regular + italic)
-
-npm i --no-save three@0.186.0 esbuild
-node tools/build_three.mjs                              # vendor/three-car.min.js + vendor/draco/
+blender --background --python blender/build_car.py -- --no-bake
+npm run build:three
 ```
 
-Re-run `build_three.mjs` whenever `car.js` starts using another part of three.js; it reads the list from `car.js` itself.
+## Assets and credits
 
-</details>
+The car and PK monogram are original project assets; the portrait is Pranav’s supplied photograph. Organization marks identify Pranav’s employer and schools. Their owners retain their respective rights. Asset provenance is recorded in [logo sources](assets/logos/SOURCES.md).
 
-<details>
-<summary><b>Using the official Formula1 fonts</b></summary>
-
-<br>
-
-The site ships with **PK Wide**, an original extended display face drawn for this project. If you have the Formula1 font ZIP, you can swap it in:
-
-```bash
-pip install fonttools brotli
-python3 tools/install_f1_fonts.py path/to/fonts.zip
-```
-
-This writes `assets/fonts/*.woff2` and `assets/fonts/f1.css`. The Formula1 typefaces belong to Formula One Licensing B.V., so check the licence before publishing with them.
-
-</details>
-
-## Credits
-
-- **Photo** © Pranav Kondapaneni. It was upscaled 4× with Real-ESRGAN and cut out with BiRefNet-portrait.
-- **Logos** are the trademarks of their owners and identify Pranav's employer and schools. Sources are listed in [`assets/logos/SOURCES.md`](assets/logos/SOURCES.md).
-- **Car, smoke, metal and typeface** are original to this site.
-- **Titillium Web** and **JetBrains Mono** are self-hosted under the SIL Open Font License (`assets/fonts/OFL-*.txt`).
-- Built with [three.js](https://threejs.org) and [Blender](https://www.blender.org).
-
-<p align="center">
-  <br>
-  <a href="https://adamnolle.github.io/Pranav-Website/"><b>adamnolle.github.io/Pranav-Website</b></a> ·
-  <a href="https://www.linkedin.com/in/pranavkondapaneni/">Connect with Pranav on LinkedIn</a>
-</p>
+The site uses three.js under the MIT license. PK Wide is an original project typeface, generated by [`tools/build_font.py`](tools/build_font.py). Titillium Web and JetBrains Mono are self-hosted under the SIL Open Font License; their license files are in [`assets/fonts/`](assets/fonts/).
