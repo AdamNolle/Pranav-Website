@@ -11,6 +11,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -36,11 +37,11 @@ try {
   canvas.remove();
   throw e;
 }
-const DPR = () => Math.min(devicePixelRatio, PHONE ? 1.25 : 2);
+const DPR = () => Math.min(devicePixelRatio, +new URLSearchParams(location.search).get('dpr') || (PHONE ? 1.25 : 2));
 renderer.setPixelRatio(DPR());
 renderer.toneMapping = THREE.NeutralToneMapping;          // photographic roll-off, keeps the blues honest
 renderer.toneMappingExposure = 1.3;
-renderer.shadowMap.enabled = !PHONE;                      // phones: baked contact shadow only
+renderer.shadowMap.enabled = !PHONE && !new URLSearchParams(location.search).has('noshadow');                      // phones: baked contact shadow only
 renderer.shadowMap.type = THREE.VSMShadowMap;             // soft, blurred shadow edges
 
 const scene = new THREE.Scene();
@@ -177,8 +178,9 @@ const belt = (() => {
 
 // ---------- camera + post ----------
 const camera = new THREE.PerspectiveCamera(26, 1, 0.1, 120);
+const DBG = new URLSearchParams(location.search);
 let composer = null, bloom = null;
-if (!PHONE) {
+if (!PHONE && !DBG.has('nobloom')) {
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.1, 0.35, 0.985);    // true highlights only
@@ -186,6 +188,7 @@ if (!PHONE) {
   composer.addPass(new OutputPass());
 }
 const draw = () => (composer ? composer.render() : renderer.render(scene, camera));
+if (DBG.has('gpu')) window.__car = { renderer, scene, camera, draw, get composer() { return composer; } };
 
 // ---------- car rig ----------
 const rig = new THREE.Group();        // drives along X and yaws
@@ -229,6 +232,35 @@ function mirrorMaterial(mat) {
   return m;
 }
 
+// Collapse a group's meshes into one mesh per material (identical pixels, a fraction of the draw calls).
+// Geometry is baked into the group's space; meshes whose attribute sets differ are merged separately.
+function mergeByMaterial(group) {
+  group.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const buckets = new Map(), m = new THREE.Matrix4();
+  group.traverse(o => {
+    if (!o.isMesh) return;
+    const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'uv1', 'tangent', 'color'].includes(k)) g.deleteAttribute(k);
+    g.applyMatrix4(m.multiplyMatrices(inv, o.matrixWorld));
+    const key = o.material.uuid + '|' + Object.keys(g.attributes).sort().join(',') + '|' + o.castShadow;
+    if (!buckets.has(key)) buckets.set(key, { mat: o.material, cast: o.castShadow, recv: o.receiveShadow, geos: [] });
+    buckets.get(key).geos.push(g);
+  });
+  const out = [];
+  for (const { mat, cast, recv, geos } of buckets.values()) {
+    const merged = geos.length === 1 ? geos[0] : mergeGeometries(geos, false);
+    if (!merged) continue;
+    const mesh = new THREE.Mesh(merged, mat);
+    mesh.castShadow = cast; mesh.receiveShadow = recv; mesh.layers.enable(2);
+    mesh.name = 'Merged_' + mat.name;
+    out.push(mesh);
+  }
+  [...group.children].forEach(c => group.remove(c));
+  out.forEach(mesh => group.add(mesh));
+  return out.length;
+}
+
 // Split the car root into rotating wheels and a sprung chassis (so heave/pitch never lift the tyres).
 function rigCar(root) {
   const sprung = new THREE.Group();
@@ -239,7 +271,8 @@ function rigCar(root) {
 }
 
 const draco = new DRACOLoader().setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
-new GLTFLoader().setDRACOLoader(draco).load('assets/car.glb', async gltf => {
+// Phones get a geometry-decimated build (same textures); at ~390 CSS px wide it is indistinguishable.
+new GLTFLoader().setDRACOLoader(draco).load(PHONE && !DBG.has('fullcar') ? 'assets/car_mobile.glb' : 'assets/car.glb', async gltf => {
   car = gltf.scene;
   const root = car.getObjectByName('Car') || car;
   car.traverse(o => {
@@ -259,8 +292,11 @@ new GLTFLoader().setDRACOLoader(draco).load('assets/car.glb', async gltf => {
   });
   ({ sprung: chassis, ws: wheels } = rigCar(root));
   body.add(car);
+  // wheels keep their own group (they spin); everything inside each group is merged by material
+  const calls = mergeByMaterial(chassis) + wheels.reduce((n, w) => n + mergeByMaterial(w), 0);
+  console.debug('[car] draw calls per pass after merge:', calls);
 
-  if (!PHONE) {
+  if (!PHONE && !DBG.has('notwin')) {
     twin = car.clone(true);
     const cache = new Map();
     twin.traverse(o => {
@@ -279,11 +315,13 @@ new GLTFLoader().setDRACOLoader(draco).load('assets/car.glb', async gltf => {
   body.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(body.matrixWorld).invert();
   const v = new THREE.Vector3(), mtx = new THREE.Matrix4();
+  let total = 0;
+  car.traverse(o => { if (o.isMesh && !o.material.name.startsWith('Decal')) total += o.geometry.attributes.position.count; });
+  const step = Math.max(1, Math.floor(total / 600));          // ~600 points is plenty for a screen rect
   car.traverse(o => {
     if (!o.isMesh || o.material.name.startsWith('Decal')) return;
     const pos = o.geometry.attributes.position;
     mtx.multiplyMatrices(inv, o.matrixWorld);
-    const step = Math.max(1, Math.floor(pos.count / 30));
     for (let i = 0; i < pos.count; i += step) samplePts.push(v.fromBufferAttribute(pos, i).applyMatrix4(mtx).clone());
   });
 
@@ -357,8 +395,16 @@ frame();
 
 // ---------- screen-space bounds + silhouette mask ----------
 const tmpV = new THREE.Vector3();
-function projectBounds() {
+// Canvas page position cached on resize; per frame it is derived from scrollY (no forced layout).
+const canvasPos = { top: 0, left: 0, width: 1, height: 1 };
+function cacheCanvasPos() {
   const r = canvas.getBoundingClientRect();
+  Object.assign(canvasPos, { top: r.top + scrollY, left: r.left + scrollX, width: r.width, height: r.height });
+}
+new ResizeObserver(cacheCanvasPos).observe(canvas);
+cacheCanvasPos();
+function projectBounds() {
+  const r = { left: canvasPos.left - scrollX, top: canvasPos.top - scrollY, width: canvasPos.width, height: canvasPos.height };
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   const m = body.matrixWorld;
   for (const p of samplePts) {
@@ -375,7 +421,7 @@ const maskMat = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false });
 const maskRT = new THREE.WebGLRenderTarget(MASK_W, 128, { depthBuffer: true });
 const maskCanvas = document.createElement('canvas');
 const maskCtx = maskCanvas.getContext('2d');
-let maskBuf = new Uint8Array(0), maskFrame = 0, lastMaskKey = '', maskBusy = false;
+let maskBuf = new Uint8Array(0), lastMaskT = -1e9, lastMaskKey = '', maskBusy = false;
 const clearColor = new THREE.Color();
 
 function renderMask(b) {
@@ -413,7 +459,15 @@ function renderMask(b) {
       }
     }
     maskCtx.putImageData(img, 0, 0);
-    window.__carMask = { canvas: maskCanvas, x: b.x, y: b.y, w: b.w, h: b.h };
+    // Rear-wing trailing upper corner (tip-vortex source), found here on the CPU copy so the smoke
+    // layer never has to read pixels back from a GPU canvas. Normalised 0..1 in the mask rect.
+    let x0 = MASK_W, x1 = -1, tip = null;
+    for (let y = 0; y < mh; y += 2) for (let x = 0; x < MASK_W; x += 2) if (d[(y * MASK_W + x) * 4 + 3] > 128) { if (x < x0) x0 = x; if (x > x1) x1 = x; }
+    if (x1 >= 0) {
+      const xr = x1 - (x1 - x0) * 0.3;
+      find: for (let y = 0; y < mh; y++) for (let x = x1; x >= xr; x--) if (d[(y * MASK_W + x) * 4 + 3] > 128) { tip = { u: x / MASK_W, v: y / mh }; break find; }
+    }
+    window.__carMask = { canvas: maskCanvas, x: b.x, y: b.y, w: b.w, h: b.h, tip };
   };
   // async readback (fence) avoids stalling the GPU pipeline; fall back to sync on old builds
   if (renderer.readRenderTargetPixelsAsync) {
@@ -520,9 +574,11 @@ function tick(now) {
   window.__carBounds = b ? { x: b.x, y: b.y, w: b.w, h: b.h } : null;
   if (!b) { window.__carMask = null; return; }
   const keyStr = `${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.w)},${Math.round(b.h)}`;
-  const every = PHONE ? 6 : 3;
-  if (!maskBusy && ++maskFrame % every === 0 && (keyStr !== lastMaskKey || !window.__carMask)) {
-    lastMaskKey = keyStr;
+  // Silhouette readback at 5 Hz: the car turns slowly and the mask's rect already tracks it every
+  // frame, so this is visually identical to per-frame updates at a fraction of the GPU sync cost.
+  const due = now - lastMaskT > (state.phase === 'driving' ? 90 : PHONE ? 330 : 200);
+  if (!DBG.has('nomask') && !maskBusy && due && (keyStr !== lastMaskKey || !window.__carMask)) {
+    lastMaskKey = keyStr; lastMaskT = now;
     renderMask(b);
   } else if (window.__carMask) {
     Object.assign(window.__carMask, { x: b.x, y: b.y, w: b.w, h: b.h });

@@ -78,7 +78,15 @@ a:hover { color: var(--acc-glow); }
   background-repeat: no-repeat, repeat-y;
   background-position: calc(var(--lxr, 0.5) * 100%) 0, 0 0;
   -webkit-background-clip: text; background-clip: text; color: transparent;
-  filter: drop-shadow(0 1px 0 rgba(255,255,255,0.08)) drop-shadow(0 18px 28px rgba(0,0,0,0.75));
+  position: relative;   /* no z-index/isolation: the shadow copy must sit behind, in the section's context */
+}
+/* The drop shadow lives on a static copy of the text behind the chrome (data-text, set by main.js).
+   A filter on the chrome itself forced a re-raster + blur of every headline each time the sweep
+   moved; this layer never changes, so the browser rasterizes it once. Same look. */
+.chrome-text[data-text]::after {
+  content: attr(data-text); position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  padding: inherit; color: transparent; -webkit-text-fill-color: transparent;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.08), 0 18px 28px rgba(0,0,0,0.75);
 }
 
 .section-title {
@@ -154,7 +162,7 @@ a:hover { color: var(--acc-glow); }
 .hud {
   position: relative; isolation: isolate;
   justify-self: center; pointer-events: none;
-  display: grid; gap: 8px; padding: 10px 14px 8px; min-width: 160px;
+  display: grid; gap: 8px; padding: 10px 18px 9px; min-width: 212px;
   border-radius: 18px;
   background:
     radial-gradient(260px circle at var(--px,-600px) var(--py,-600px), rgba(160,196,255,0.18), transparent 60%),
@@ -189,11 +197,11 @@ a:hover { color: var(--acc-glow); }
 
 .hud-read { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; }
 .hud-speed { display: flex; align-items: baseline; gap: 6px; }
-.hud-speed b { font-size: 28px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; color: var(--fg-hi); }
-.hud-unit { font-size: 10px; letter-spacing: 0.12em; color: var(--muted); }
+.hud-speed b { font-size: 40px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; color: var(--fg-hi); }
+.hud-unit { font-size: 12px; letter-spacing: 0.12em; color: var(--muted); }
 .hud-gear { text-align: right; }
-.hud-gear small { display: block; font-size: 9px; letter-spacing: 0.14em; color: var(--muted); }
-.hud-gear b { display: block; font-size: 22px; font-weight: 700; line-height: 1; color: var(--acc-glow); text-shadow: 0 0 10px var(--acc); }
+.hud-gear small { display: block; font-size: 11px; letter-spacing: 0.14em; color: var(--muted); }
+.hud-gear b { display: block; font-size: 32px; font-weight: 700; line-height: 1; color: var(--acc-glow); text-shadow: 0 0 10px var(--acc); }
 
 /* ---------- hero ---------- */
 .hero {
@@ -242,7 +250,6 @@ a:hover { color: var(--acc-glow); }
   /* main.js fits the longest line to the hero width via --name-size. */
   font-size: var(--name-size, clamp(26px,7.4vw,168px)); line-height: 0.92; letter-spacing: -0.005em;
   text-transform: uppercase; color: var(--fg-hi);
-  filter: drop-shadow(0 18px 28px rgba(0,0,0,0.75));
   width: fit-content;
 }
 .hero-name > div { white-space: nowrap; }
@@ -464,8 +471,8 @@ a:hover { color: var(--acc-glow); }
 @media (max-width: 760px) {
   .page { font-size: 16px; }
   .hud { min-width: 0; gap: 6px; padding: 8px 10px 6px; border-radius: 14px; }
-  .hud-speed b { font-size: 20px; }
-  .hud-gear b { font-size: 17px; }
+  .hud-speed b { font-size: 28px; }
+  .hud-gear b { font-size: 23px; }
 
   .hero { padding-top: 96px; }
   .lights { top: 92px; gap: 10px; flex-wrap: wrap; right: var(--pad-x); }
@@ -580,7 +587,8 @@ main:focus { outline: none; }
 .name-ghost {
   position: absolute; inset: 0; z-index: -1; pointer-events: none;
   color: rgba(120,160,230,0.13); font-kerning: none;   /* per-letter spans aren't kerned either */
-  filter: none; transition: opacity 400ms ease;
+  text-shadow: 0 18px 28px rgba(0,0,0,0.75);           /* the name's drop shadow, rasterized once */
+  transition: color 400ms ease;
 }
-.hero-name[data-landed] .name-ghost { opacity: 0; }
+.hero-name[data-landed] .name-ghost { color: transparent; }
 .name-ghost > div { white-space: nowrap; }

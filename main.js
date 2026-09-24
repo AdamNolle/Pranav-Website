@@ -55,6 +55,21 @@
   let lastY = scrollY, lastT = performance.now(), lastKmh = -1, lastLit = -1;
   let timers = [];
 
+  q('.chrome-text').forEach(el => el.setAttribute('data-text', el.textContent));
+
+  // Which chrome surfaces are on screen (so the sweep only touches those).
+  let lastLxr = -1, nameOnScreen = true, lastPlateT = 0;
+  const chromeOnScreen = new Set();
+  if ('IntersectionObserver' in window) {
+    const cio = new IntersectionObserver(es => es.forEach(e => {
+      if (e.target === nameEl) nameOnScreen = e.isIntersecting;
+      else e.isIntersecting ? chromeOnScreen.add(e.target) : chromeOnScreen.delete(e.target);
+      lastLxr = -1;
+    }));
+    cio.observe(nameEl);
+    q('.chrome-text').forEach(el => cio.observe(el));
+  } else q('.chrome-text').forEach(el => chromeOnScreen.add(el));
+
   function measure() {
     // Fit the longest name line to the hero's content width (capped for very wide screens).
     const cs = getComputedStyle(hero);
@@ -65,14 +80,21 @@
     root.style.setProperty('--name-size', size.toFixed(1) + 'px');
     nameEl.style.removeProperty('--name-size');
     hw = nameEl.offsetWidth;
-    root.style.setProperty('--hw', hw + 'px');
+    nameEl.style.setProperty('--hw', hw + 'px');
     letters.forEach(l => l.style.setProperty('--ox', l.offsetLeft + 'px'));
   }
 
   // Moves each metal plate's highlight toward the pointer; on touch it drifts on its own.
+  // Only plates on screen get their highlight updated (no rect reads for the rest).
+  const platesOnScreen = new Set();
+  if ('IntersectionObserver' in window) {
+    const pio = new IntersectionObserver(es => es.forEach(e => e.isIntersecting ? platesOnScreen.add(e.target) : platesOnScreen.delete(e.target)));
+    plates.forEach(p => pio.observe(p));
+  } else plates.forEach(p => platesOnScreen.add(p));
   function updatePlates(t) {
     const H = innerHeight, touch = ptr.t === 0;
     plates.forEach((p, i) => {
+      if (!platesOnScreen.has(p)) return;
       const b = p.getBoundingClientRect();
       if (b.bottom < 0 || b.top > H) return;
       if (touch) {
@@ -208,9 +230,21 @@
       target += Math.sin(y / 600) * 0.12;
       lx += (target - lx) * 0.14;
     }
-    root.style.setProperty('--lxp', (lx * hw) + 'px');
-    root.style.setProperty('--lxr', Math.max(0, Math.min(1, 1 - lx)).toFixed(4));
-    if ((ptr.t === 0 && document.documentElement.dataset.motion !== 'paused') || inst > 0) updatePlates(t);
+    // Chrome sweep: write only to on-screen chrome elements, and only when the value visibly moves.
+    // (Writing to the page root restyled the whole document every frame.)
+    const lxr = Math.max(0, Math.min(1, 1 - lx));
+    if (Math.abs(lxr - lastLxr) > 0.0015) {
+      lastLxr = lxr;
+      const v = lxr.toFixed(4);
+      if (nameOnScreen) nameEl.style.setProperty('--lxp', (lx * hw).toFixed(1) + 'px');
+      chromeOnScreen.forEach(el => el.style.setProperty('--lxr', v));
+    }
+    // CSS plate highlight only matters when metal.js isn't drawing the plates.
+    // The idle drift is slow (period ~10 s), so 20 Hz updates are visually identical and cost a third.
+    if (!document.documentElement.classList.contains('metal-gl') &&
+        ((ptr.t === 0 && document.documentElement.dataset.motion !== 'paused' && t - lastPlateT > 50) || inst > 0)) {
+      lastPlateT = t; updatePlates(t);
+    }
   }
 
   // ---------- wiring ----------

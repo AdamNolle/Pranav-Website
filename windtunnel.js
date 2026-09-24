@@ -153,29 +153,13 @@ function drawGlyphs() {
     if (tc.width !== cm.canvas.width || tc.height !== cm.canvas.height) { tc.width = cm.canvas.width; tc.height = cm.canvas.height; }
     tctx.globalCompositeOperation = 'copy';
     tctx.drawImage(cm.canvas, 0, 0);
-    if (st.frame % 8 === 0) findTip(tc, cm);
+    // tip comes precomputed from car.js (CPU side); no getImageData on a GPU canvas
+    st.tip = cm.tip ? { x: cm.x + cm.tip.u * cm.w, y: cm.y + cm.tip.v * cm.h, s: cm.h } : null;
     tctx.globalCompositeOperation = 'source-in';
     tctx.fillStyle = '#f00'; tctx.fillRect(0, 0, tc.width, tc.height);
     gctx.drawImage(tc, cm.x * sx, cm.y * sy, cm.w * sx, cm.h * sy);
   }
 }
-// Rear-wing trailing upper corner of the car silhouette: the tip-vortex source.
-function findTip(tc, cm) {
-  let d;
-  try { d = tctx.getImageData(0, 0, tc.width, tc.height).data; } catch (e) { st.tip = null; return; }
-  const w = tc.width, h = tc.height;
-  let x0 = w, x1 = -1;
-  for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) if (d[(y * w + x) * 4 + 3] > 128) { if (x < x0) x0 = x; if (x > x1) x1 = x; }
-  if (x1 < 0) { st.tip = null; return; }
-  const xr = x1 - (x1 - x0) * 0.3;
-  for (let y = 0; y < h; y++) {
-    for (let x = x1; x >= xr; x--) {
-      if (d[(y * w + x) * 4 + 3] > 128) { st.tip = { x: cm.x + (x / w) * cm.w, y: cm.y + (y / h) * cm.h, s: cm.h }; return; }
-    }
-  }
-  st.tip = null;
-}
-
 // Per frame: convert cached rects to viewport space, visible ones only, solids first.
 function packRects() {
   const sy = st.scroll, H = st.H, list = [];
@@ -817,7 +801,8 @@ function initGL() {
   R.tf = gl.createTransformFeedback();
   glOK = true;
   for (const k in TEX) delete TEX[k];
-  loadSprite('smoke-atlas.webp', 'atlas', false);
+  // phones draw puffs at ~105 CSS px: a 128 px-cell atlas carries every visible detail at a quarter the bytes
+loadSprite(tierIx === 0 || Math.min(innerWidth, innerHeight) < 600 ? 'smoke-atlas-sm.webp' : 'smoke-atlas.webp', 'atlas', false);
   loadSprite('motes.webp', 'motes', false);
   loadSprite('wisp.webp', 'wisp', true);
   build(null);
@@ -863,13 +848,12 @@ function build(prev) {
     R.copy.use().t('uSrc', old.uv.read.tex); draw(N.uv.read);
     ['mask', 'div', 'curl', 'phi1', 'glow', 'glyph'].forEach(k => old[k].free());
     ['vel', 'p', 'uv', 'dye', 'jfa'].forEach(k => old[k].free());
-    N.parts = old.parts; N.puffs = old.puffs; N.gusts = old.gusts;
+    N.parts = old.parts; N.puffs = old.puffs;
   } else {
     R.fill.use().f('uVal', freeStream(), 0, 0, 1); draw(N.vel.read);
     S = N; prefill();
     N.parts = pool(T.parts, 2.5, 8, false);
     N.puffs = pool(T.puffs, 5, 10, false);
-    N.gusts = pool(Math.round(T.puffs * 1.5), 1.6, 3.2, true);
   }
   S = N;
   S.iters = T.iters;
@@ -981,12 +965,7 @@ function step(dt, dy) {
   };
   upd(S.parts, { left: 0.3 });
   upd(S.puffs, { left: 0.55 });
-  let rect = null;
-  if (st.burst) {
-    const c = st.car;
-    rect = c ? [c.x + c.w * 0.4, c.y + c.h * 0.1, c.w * 0.9, c.h * 0.8] : [0, H * 0.35, W * 0.25, H * 0.4];
-  }
-  upd(S.gusts, { left: 0, burst: st.burst, rect });
+  // (the race:go sprite burst was removed: the gust now lives only in the flow field itself)
   st.burst = 0;
   gl.disable(gl.RASTERIZER_DISCARD);
   gl.bindVertexArray(R.vao);
@@ -1022,7 +1001,6 @@ function render() {
     };
     const sc = Math.min(1, W / 1200);
     puff(S.puffs, 0.085, 190 * Math.max(0.55, sc), 1.4);
-    puff(S.gusts, 0.36, 150 * Math.max(0.6, sc), 2.2);
   }
   // tracer motes (additive)
   if (TEX.motes) {

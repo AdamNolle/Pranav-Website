@@ -17,6 +17,19 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
 5. **Texture quality everywhere:** (2× DPR pass 2026-09-23: logos, type, metal and portrait are crisp; the car backdrop was beige and is now cool navy. Suspension members now use 28-segment profiles and the GLB stores normals at 11 bits, so the banding is gone.) no visible tiling, banding, aliasing, blur or stretching on the car, metal cards, smoke sprites, logos or portrait. Check each at 2× DPR.
 
 ## Done (2026-09-23)
+- **Performance pass, no visual change** (measured on a 2× retina desktop and a 3× phone with 4× CPU throttle):
+  - Desktop hero: 24–26 fps with 100 ms spikes → 56 fps. Phone hero: 36 → 60 fps. Scrolled sections hold 60 fps.
+  - Fixes:
+    - The chrome sweep no longer writes CSS variables to the page root every frame; it writes only to on-screen headlines, and only when the value changes. Style recalc on phones dropped from 8.9 ms to about 1 ms per frame.
+    - The rear-wing vortex tip is computed on the CPU in car.js, removing a `getImageData` GPU readback (394 ms/s).
+    - The silhouette readback runs at 5 Hz (3 Hz on phones) instead of every 3rd frame.
+    - Car meshes are merged by material: 182 → 47 draw calls per pass.
+    - The per-frame `getBoundingClientRect` was replaced with a cached position, and bounds samples were capped at about 600.
+    - Headline drop shadows moved onto static layers, so the sweep no longer forces a re-raster with blur.
+    - Plate highlights update only for on-screen plates, and at 20 Hz while idle.
+  - Loading: `car_mobile.glb` for phones (triangles −41%, 1,159 → 1,008 KB); a half-resolution smoke atlas for phones (404 → 107 KB); preconnect to jsDelivr and gstatic. Phone download is 1,468 → 1,176 KB; LCP 0.68 s.
+- Removed the white smoke-sprite burst at lights out (the airflow gust itself is unchanged).
+- Speed/gear HUD enlarged about 40% (speed 28 → 40 px, gear 22 → 32 px; phone 20/17 → 28/23 px).
 - **LCP:** a faint filled silhouette of the name (the slot the chrome letters fly into) paints at first frame and fades once they land. Throttled-mobile LCP is now about 0.7 s (was 2.3–2.6 s) across 5 runs; CLS 0.006.
 - **Car to 1:1, proportions:** checked against 2024–25 dimensions (length 5.57 m, width 2.02 m, 3.6 m wheelbase, 720 mm tyres, about 0.96 m height; all within regulation).
   - The front wing was 0.57 m tall at the tips against a real 0.33–0.35 m. It's re-proportioned to 0.25 m in the centre and 0.35 m at the tips.

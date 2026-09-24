@@ -1814,6 +1814,24 @@ if DO_EXPORT:
     bpy.ops.export_scene.gltf(**kw)
     print('Exported', OUT, os.path.getsize(OUT) // 1024, 'KB')
 
+    # Phone variant: the car renders ~390 CSS px wide at DPR <= 1.25 there, so dense surfaces are
+    # decimated (decals untouched, they must stay conformal) and Draco precision matches that scale.
+    OUT_M = OUT.replace('car.glb', 'car_mobile.glb')
+    dg = bpy.context.evaluated_depsgraph_get()
+    for o in [o for o in col.objects if o.type == 'MESH']:
+        # evaluated count: most density comes from subdivision applied at export
+        if o.name.startswith('Decal') or len(o.evaluated_get(dg).data.polygons) < 1200:
+            continue
+        dm = o.modifiers.new('PhoneDecimate', 'DECIMATE')
+        dm.decimate_type = 'COLLAPSE'; dm.ratio = 0.45; dm.use_collapse_triangulate = True
+    kw_m = dict(kw, filepath=OUT_M, export_draco_position_quantization=12, export_draco_normal_quantization=10,
+                export_draco_texcoord_quantization=12, export_draco_mesh_compression_level=7)
+    bpy.ops.export_scene.gltf(**kw_m)
+    print('Exported', OUT_M, os.path.getsize(OUT_M) // 1024, 'KB')
+    for o in col.objects:                        # leave the scene as it was for the preview renders
+        if o.type == 'MESH' and 'PhoneDecimate' in o.modifiers:
+            o.modifiers.remove(o.modifiers['PhoneDecimate'])
+
 # =============================================================== GPU (Metal) Cycles
 def use_gpu():
     scene.render.engine = 'CYCLES'
