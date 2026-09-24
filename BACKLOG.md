@@ -17,6 +17,14 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
 5. **Texture quality everywhere:** (2× DPR pass 2026-09-23: logos, type, metal and portrait are crisp; the car backdrop was beige and is now cool navy. Suspension members now use 28-segment profiles and the GLB stores normals at 11 bits, so the banding is gone.) no visible tiling, banding, aliasing, blur or stretching on the car, metal cards, smoke sprites, logos or portrait. Check each at 2× DPR.
 
 ## Done (2026-09-24)
+- **Scrolling:**
+  - Traced to the smoke's glyph SDF (Canvas2D redraw, upload and 8 jump-flood passes) being rebuilt every step while the page moved or the car was on screen. It's now rebuilt on change, and at most every third step while scrolling, sampled with a scroll offset.
+  - Also: metal plate geometry cache, reveal animations without blur(), a static phone card sheen, and no halo on text over opaque cards.
+  - Result: 60 fps with 0 dropped frames while scrolling (desktop, and phone at 4× CPU).
+- **Car lighting:**
+  - Cycles ray-traced AO is baked onto the livery atlas and exported as occlusionTexture.
+  - Decals are hidden during the bake.
+  - Other materials on the baked objects get a throwaway bake target: Cycles otherwise wrote AO into the shared carbon/flake tiles, which is what made carbon glitter in a test build.
 - **Lighting and airflow quality:**
   - The smoke and particles are lit by a ray-marched single-scattering pass: a key light plus the laser sheet, shadowed by the smoke and by the obstacle SDF, with haze in-scattering.
   - Fixed a regression where both adaptive governors used a running-minimum refresh estimate. One back-to-back frame pair made every frame look slow, so the smoke shed pressure iterations and particles for the rest of the visit. The estimate is now a snapped median of the fastest sixth, and smoke shedding is a bounded last resort that recovers.

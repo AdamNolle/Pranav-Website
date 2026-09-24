@@ -59,7 +59,7 @@ The phone layout frames the car above the name and stacks the stats. It loads a 
 | Length × width × height | 5.57 m × 2.02 m × ~0.96 m |
 | Wheelbase / tyres | 3.60 m / 720 mm |
 | Bodywork | B-spline sections lofted with monotone-cubic stations: taut surfaces with crisp shoulder lines |
-| Livery | One baked UV texture set, from an electric-blue nose through gloss navy to a satin-black rear, with a silver pinstripe |
+| Livery | One baked UV texture set, from an electric-blue nose through gloss navy to a satin-black rear, with a silver pinstripe. It also carries Cycles ray-traced ambient occlusion, so crevices and undercuts darken as in a path-traced render |
 | Sponsors | J.B. Hunt on the sidepods, endplates and DRS flap; Georgia Tech on the engine cover and endplates; Missouri S&T on the nose and front wing. Phones get a wordmark-only J.B. Hunt so it stays crisp at small sizes |
 | Web delivery | Draco-compressed GLB with WebP textures (`car.glb` ≈ 1.5 MB; `car_mobile.glb` ≈ 1.0 MB, decimated for phones) |
 

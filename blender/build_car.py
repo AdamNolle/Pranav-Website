@@ -2142,6 +2142,80 @@ for o in list(col.objects):
 stats = sum(len(o.data.polygons) for o in col.objects if o.type == 'MESH')
 print('objects', len(col.objects), 'polys', stats)
 
+# ---------------------------------------------------------------- ray-traced ambient occlusion (livery)
+# Cycles bakes ambient occlusion (ray traced: 128 samples, 0.35 m reach, over a ground plane) onto the
+# livery atlas, and the exporter writes it as the material's occlusionTexture. three.js applies it to
+# all the studio light the body gets from the environment and the fill, so panel gaps, the sidepod
+# undercut, the cockpit and the floor edge darken the way they do in a path-traced render, on every
+# device, at no runtime cost. (Skip with --no-ao.)
+if '--no-ao' not in ARGS and LIVERY_OBJS:
+    import time
+    t0 = time.time()
+    use_gpu()
+    scene.cycles.samples = 128
+    world_prev = scene.world
+    scene.world = bpy.data.worlds.new('AOBake')
+    scene.world.light_settings.distance = 0.35
+    bpy.ops.mesh.primitive_plane_add(size=1, location=(0.3, 0, 0.0))
+    ground = bpy.context.active_object
+    ground.scale = (12, 8, 1)
+    AO_N = 1024
+    raw = bpy.data.images.new('livery_ao_raw', AO_N, AO_N, alpha=False, float_buffer=True)
+    ml = M['livery']
+    nt = ml.node_tree
+    bake_node = nt.nodes.new('ShaderNodeTexImage')
+    bake_node.image = raw
+    nt.nodes.active = bake_node
+    prev_uv = {}
+    for o in LIVERY_OBJS:
+        prev_uv[o.name] = o.data.uv_layers.active.name
+        o.data.uv_layers.active = o.data.uv_layers['Livery']
+    bpy.ops.object.select_all(action='DESELECT')
+    for o in LIVERY_OBJS:
+        o.select_set(True)
+    bpy.context.view_layer.objects.active = LIVERY_OBJS[0]
+    decals = [o for o in col.objects if o.name.startswith('Decal') and not o.hide_render]
+    for o in decals:
+        o.hide_render = True                              # logos float 1.2 mm up: they'd print into the AO
+    # Cycles bakes into the active image node of EVERY material on the selected objects. The body parts
+    # also carry carbon/paint slots whose active nodes are shared tiling textures (carbon base colour,
+    # paint flake), so give each of those a throwaway target instead of letting AO paint over them.
+    scratch, restore = bpy.data.images.new('bake_scratch', 8, 8), []
+    for mat in {ms.material for o in LIVERY_OBJS for ms in o.material_slots if ms.material and ms.material != ml}:
+        dn = mat.node_tree.nodes.new('ShaderNodeTexImage'); dn.image = scratch
+        restore.append((mat, mat.node_tree.nodes.active, dn)); mat.node_tree.nodes.active = dn
+    bpy.ops.object.bake(type='AO', margin=6, use_clear=True)
+    for mat, prev, dn in restore:
+        mat.node_tree.nodes.remove(dn)
+        if prev: mat.node_tree.nodes.active = prev
+    bpy.data.images.remove(scratch)
+    for o in decals:
+        o.hide_render = False
+    for o in LIVERY_OBJS:
+        o.data.uv_layers.active = o.data.uv_layers[prev_uv[o.name]]
+    bpy.data.objects.remove(ground)
+    scene.world = world_prev
+    a = np.empty(AO_N * AO_N * 4, np.float32)
+    raw.pixels.foreach_get(a)
+    ao = a.reshape(AO_N, AO_N, 4)[..., 0]
+    ao = np.clip(ao, 0, 1) ** 0.85                        # keep open panels near 1; crevices still read
+    aoimg = save_img('livery_ao', np.stack([ao, ao, ao], -1)[::-1], True)
+    bake_node.image = aoimg
+    uvn = nt.nodes.new('ShaderNodeUVMap')
+    uvn.uv_map = 'Livery'
+    nt.links.new(uvn.outputs['UV'], bake_node.inputs['Vector'])
+    sep = nt.nodes.new('ShaderNodeSeparateColor')
+    nt.links.new(bake_node.outputs['Color'], sep.inputs['Color'])
+    grp = bpy.data.node_groups.get('glTF Material Output')
+    if grp is None:
+        grp = bpy.data.node_groups.new('glTF Material Output', 'ShaderNodeTree')
+        grp.interface.new_socket(name='Occlusion', in_out='INPUT', socket_type='NodeSocketFloat')
+    gnode = nt.nodes.new('ShaderNodeGroup')
+    gnode.node_tree = grp
+    nt.links.new(sep.outputs['Red'], gnode.inputs['Occlusion'])
+    bpy.data.images.remove(raw)
+    print('baked livery AO (%.0fs): %d objects, mean %.2f' % (time.time() - t0, len(LIVERY_OBJS), float(ao.mean())))
+
 if DO_EXPORT:
     kw = dict(filepath=OUT, export_format='GLB', export_apply=True, export_yup=True,
               export_draco_mesh_compression_enable=True, export_draco_mesh_compression_level=6,
@@ -2160,7 +2234,7 @@ if DO_EXPORT:
             continue
         dm = o.modifiers.new('PhoneDecimate', 'DECIMATE')
         dm.decimate_type = 'COLLAPSE'; dm.ratio = 0.45; dm.use_collapse_triangulate = True
-    for nm, sz in (('livery_basecolor', 1024), ('livery_normal', 1024), ('livery_orm', 512),
+    for nm, sz in (('livery_basecolor', 1024), ('livery_normal', 1024), ('livery_orm', 512), ('livery_ao', 512),
                    ('carbon_basecolor', 512), ('carbon_normal', 512), ('carbon_orm', 512)):
         im = bpy.data.images.get(nm)
         if im and im.size[0] > sz:
