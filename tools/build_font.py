@@ -138,6 +138,10 @@ def glyphs():
     g['quotedblright'] = (dot * 2 + 70, g['quoteright'][1] + [[(x + dot + 70, y, o) for x, y, o in c] for c in g['quoteright'][1]])
     g['ampersand'] = (860, frame(0, 0, 700, M + T / 2, 'tlblbr', 'lb', r=190) + frame(40, M - T / 2, 600, H, 'tltr', 'lrt', r=170)
                       + [stroke(80, M + T / 2 - 20, 860 - W, 0, W), rect(560, 0, 860, T)])
+    # brackets and the CTA arrow (these fell back to another font before)
+    g['parenleft'] = (330, frame(0, -120, 330, H + 80, 'tlbl', 'ltb', r=210))
+    g['parenright'] = (330, frame(0, -120, 330, H + 80, 'trbr', 'rtb', r=210))
+    g['arrowright'] = (820, [rect(0, M - T / 2, 700, M + T / 2), stroke(470, M + 300, 820 - W, M, W), stroke(820 - W, M, 470, M - 300, W)])
     g['space'] = (260, [])
     return g
 
@@ -146,7 +150,7 @@ CMAP = {**{c: c for c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'},
         '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four', '5': 'five', '6': 'six', '7': 'seven',
         '8': 'eight', '9': 'nine', '.': 'period', ',': 'comma', '-': 'hyphen', ':': 'colon', '·': 'periodcentered',
         '/': 'slash', '!': 'exclam', "'": 'quotesingle', '’': 'quoteright', '‘': 'quoteleft', '“': 'quotedblleft',
-        '”': 'quotedblright', '&': 'ampersand', ' ': 'space', ' ': 'space'}
+        '”': 'quotedblright', '&': 'ampersand', '(': 'parenleft', ')': 'parenright', '→': 'arrowright', ' ': 'space', ' ': 'space'}
 CMAP.update({c.lower(): c for c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'})   # the site sets display text in caps
 
 

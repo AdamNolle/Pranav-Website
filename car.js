@@ -1,6 +1,8 @@
 // Studio / wind-tunnel scene for the hero: Pranav's F1 car on a rolling road, lit like a car-launch press shot.
 // Loaded with a dynamic import() after first paint (main.js). Performance-first: renderer first, then the GLB,
-// shaders compiled with compileAsync before the first frame; phones get a lighter pipeline.
+// shaders compiled with compileAsync before the first frame; phones get a lighter pipeline. Heavy steps
+// (environment bake, model build, first upload) never run while the intro is playing (see introQuiet).
+// three.js comes from vendor/three-car.min.js (import map in index.html; rebuilt by tools/build_three.mjs).
 // Contracts:
 //   listens  race:reset / race:light (detail = index) / race:go      (start sequence from main.js)
 //            motion:toggle {detail.paused} + <html data-motion="paused"> (WCAG 2.2.2 pause)
@@ -8,6 +10,7 @@
 //   exposes  window.__carBounds = { x, y, w, h }  CSS px viewport rect of the projected car, or null
 //            window.__carMask   = { canvas, x, y, w, h }  silhouette (alpha) + its viewport rect, or null
 //   adds class `ready` to canvas[data-car]; the canvas stays aria-hidden (decorative).
+//   fires    car:ready once the car is on screen (or can't be shown), so main.js can start the lights.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -29,6 +32,14 @@ const MASK_W = PHONE ? 160 : 256;
 const SHADOW = { url: 'assets/car/shadow.webp', w: 7.2, d: 3.2, x: 0.3 };
 
 let paused = reduce || document.documentElement.dataset.motion === 'paused';
+
+// The intro (start lights + name fly-in) owns the main thread while it plays: main.js marks it with
+// <html data-intro="live"> and fires intro:done. Heavy steps wait for it (plus the landing flourish),
+// so they never stutter the intro.
+const introQuiet = () => document.documentElement.dataset.intro !== 'live' ? Promise.resolve()
+  : new Promise(r => addEventListener('intro:done', () => setTimeout(r, 700), { once: true }));
+let readySent = false;
+const ready = () => { if (!readySent) { readySent = true; dispatchEvent(new Event('car:ready')); } };
 
 let renderer;
 try {
@@ -87,8 +98,11 @@ function studioEnvironment() {
   pm.dispose();
   return tex;
 }
-scene.environment = studioEnvironment();
 scene.environmentIntensity = 1.0;
+// The bake compiles its shaders synchronously (~150-250 ms on a slow phone), so it runs at the first
+// quiet moment: usually while the start lights hold, long before the model has finished downloading.
+const envReady = new Promise(r => requestAnimationFrame(r)).then(() => introQuiet())
+  .then(() => { scene.environment = studioEnvironment(); });
 
 // ---------- lights (physically based) ----------
 const key = new THREE.SpotLight(0xffffff, 0, 0, 0.62, 1.0, 2);     // big soft key, wide penumbra
@@ -234,16 +248,17 @@ function mirrorMaterial(mat) {
 
 // Collapse a group's meshes into one mesh per material (identical pixels, a fraction of the draw calls).
 // Geometry is baked into the group's space; meshes whose attribute sets differ are merged separately.
+// Indexed geometry stays indexed (a third of the vertices to transform, copy and upload).
 function mergeByMaterial(group) {
   group.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
   const buckets = new Map(), m = new THREE.Matrix4();
   group.traverse(o => {
     if (!o.isMesh) return;
-    const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+    const g = o.geometry.clone();
     for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv', 'uv1', 'tangent', 'color'].includes(k)) g.deleteAttribute(k);
     g.applyMatrix4(m.multiplyMatrices(inv, o.matrixWorld));
-    const key = o.material.uuid + '|' + Object.keys(g.attributes).sort().join(',') + '|' + o.castShadow;
+    const key = o.material.uuid + '|' + Object.keys(g.attributes).sort().join(',') + '|' + !!g.index + '|' + o.castShadow;
     if (!buckets.has(key)) buckets.set(key, { mat: o.material, cast: o.castShadow, recv: o.receiveShadow, geos: [] });
     buckets.get(key).geos.push(g);
   });
@@ -270,9 +285,14 @@ function rigCar(root) {
   return { sprung, ws };
 }
 
-const draco = new DRACOLoader().setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+const draco = new DRACOLoader().setDecoderPath('vendor/draco/');   // self-hosted; fetched alongside the model
+draco.preload();
 // Phones get a geometry-decimated build (same textures); at ~390 CSS px wide it is indistinguishable.
+// Hand the main thread back between steps so building the car never shows up as one long freeze.
+const yieldToMain = () => new Promise(r => setTimeout(r, 0));
 new GLTFLoader().setDRACOLoader(draco).load(PHONE && !DBG.has('fullcar') ? 'assets/car_mobile.glb' : 'assets/car.glb', async gltf => {
+  await introQuiet();
+  await envReady;
   car = gltf.scene;
   const root = car.getObjectByName('Car') || car;
   car.traverse(o => {
@@ -294,7 +314,10 @@ new GLTFLoader().setDRACOLoader(draco).load(PHONE && !DBG.has('fullcar') ? 'asse
   ({ sprung: chassis, ws: wheels } = rigCar(root));
   body.add(car);
   // wheels keep their own group (they spin); everything inside each group is merged by material
-  const calls = mergeByMaterial(chassis) + wheels.reduce((n, w) => n + mergeByMaterial(w), 0);
+  await yieldToMain();
+  let calls = mergeByMaterial(chassis);
+  for (const w of wheels) { await yieldToMain(); calls += mergeByMaterial(w); }
+  await yieldToMain();
   console.debug('[car] draw calls per pass after merge:', calls);
 
   if (!PHONE && !DBG.has('notwin')) {
@@ -313,6 +336,7 @@ new GLTFLoader().setDRACOLoader(draco).load(PHONE && !DBG.has('fullcar') ? 'asse
   }
 
   // Sample points for the projected bounds (car space).
+  await yieldToMain();
   body.updateMatrixWorld(true);
   const inv = new THREE.Matrix4().copy(body.matrixWorld).invert();
   const v = new THREE.Vector3(), mtx = new THREE.Matrix4();
@@ -329,13 +353,41 @@ new GLTFLoader().setDRACOLoader(draco).load(PHONE && !DBG.has('fullcar') ? 'asse
   // Compile every program (and upload textures) off the critical path before the first frame.
   const wasVisible = rig.visible;
   rig.visible = true;
-  try { await renderer.compileAsync(scene, camera); } catch (e) { /* older drivers: compile lazily */ }
+  // Desktop draws through the bloom composer, i.e. into a render target, which selects different
+  // program variants (linear, no tone mapping): compile those, not the direct-to-screen ones.
+  if (composer) renderer.setRenderTarget(composer.readBuffer);
+  const compiling = renderer.compileAsync(scene, camera);   // program keys are fixed synchronously here
+  renderer.setRenderTarget(null);
+  try { await compiling; } catch (e) { /* older drivers: compile lazily */ }
   rig.visible = wasVisible;
+  // Upload every texture now as well. The car stays hidden until lights out, so otherwise the first
+  // frame of the drive-in would pay for all of them at once.
+  const texs = new Set();
+  scene.traverse(o => { for (const m of [].concat(o.material || [])) for (const k in m) if (m[k] && m[k].isTexture) texs.add(m[k]); });
+  for (const t of texs) { renderer.initTexture(t); await yieldToMain(); }
 
+  await introQuiet();
+  warmUp();
   loaded = true;
   canvas.classList.add('ready');
   if (paused || state.phase === 'parked') park();
-}, undefined, () => { canvas.remove(); window.__carBounds = null; window.__carMask = null; });
+}, undefined, () => { canvas.remove(); window.__carBounds = null; window.__carMask = null; ready(); });
+
+// One throwaway frame with the car in place, so the programs compileAsync can't reach (shadow depth +
+// VSM blur, the post chain, the silhouette mask) compile now, while the lights hold, rather than on the
+// first frame of the drive-in. The main pass looks at an empty layer, so no frame of the car is shown.
+function warmUp() {
+  const vis = rig.visible, x = rig.position.x;
+  rig.visible = true; rig.position.x = 0;
+  camera.layers.set(31);
+  draw();
+  camera.layers.set(2);
+  scene.overrideMaterial = maskMat;
+  renderer.setRenderTarget(maskRT); renderer.render(scene, camera); renderer.setRenderTarget(null);
+  scene.overrideMaterial = null;
+  camera.layers.set(0);
+  rig.visible = vis; rig.position.x = x;
+}
 
 // ---------- race staging ----------
 const DRIVE_IN = 1300, START_X = 17, KEY_FULL = 90;
@@ -499,7 +551,7 @@ window.__carMask = null;
 function tick(now) {
   requestAnimationFrame(tick);
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  if (!visible || !loaded) { window.__carBounds = null; window.__carMask = null; return; }
+  if (!visible || !loaded) { window.__carBounds = null; window.__carMask = null; if (loaded) ready(); return; }
   if (!paused) idleClock += dt;
 
   // Drive-in: hard deceleration from off-screen, nose dives under braking.
@@ -568,6 +620,7 @@ function tick(now) {
   camera.lookAt(target);
 
   draw();
+  if (!readySent) requestAnimationFrame(ready);
 
   // Screen-space contracts for the wind-tunnel smoke layer.
   rig.updateMatrixWorld(true);

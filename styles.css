@@ -1,6 +1,14 @@
-/* PK Wide: original extended display face (tools/build_font.py), ~2 KB per style. */
+/* All fonts are self-hosted (no third-party requests). PK Wide: original extended display face
+   (tools/build_font.py), ~2 KB per style. Titillium Web and JetBrains Mono: latin subsets, SIL OFL 1.1. */
 @font-face { font-family: 'PK Wide'; src: url('assets/fonts/pk-wide.woff2') format('woff2'); font-weight: 100 1000; font-style: normal; font-display: swap; }
 @font-face { font-family: 'PK Wide'; src: url('assets/fonts/pk-wide-italic.woff2') format('woff2'); font-weight: 100 1000; font-style: italic; font-display: swap; }
+@font-face { font-family: 'Titillium Web'; src: url('assets/fonts/titillium-web-400.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Titillium Web'; src: url('assets/fonts/titillium-web-600.woff2') format('woff2'); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('assets/fonts/jetbrains-mono.woff2') format('woff2'); font-weight: 100 800; font-style: normal; font-display: swap; }
+/* Metric-matched fallbacks (measured from the font files): text keeps its size and line breaks while
+   the web fonts arrive, so nothing reflows when they swap in. */
+@font-face { font-family: 'Titillium Fallback'; src: local('Arial'), local('Helvetica Neue'), local('Roboto'); size-adjust: 95.3%; ascent-override: 118.9%; descent-override: 40.7%; line-gap-override: 0%; }
+@font-face { font-family: 'Mono Fallback'; src: local('Menlo'), local('Consolas'), local('Roboto Mono'), local('Courier New'); ascent-override: 102%; descent-override: 30%; line-gap-override: 0%; }
 
 :root {
   --acc: #2b7bff;
@@ -15,12 +23,12 @@
   --muted: #b3bccb;
   --dim: #cfd6e0;
   --rule: rgba(190,210,240,0.12);
-  --mono: 'JetBrains Mono', monospace;
+  --mono: 'JetBrains Mono', 'Mono Fallback', monospace;
   /* assets/fonts/f1.css overrides these three with the Formula1 family when installed. */
-  --display: 'PK Wide', 'Anybody', sans-serif;
-  --text: 'Titillium Web', sans-serif;
+  --display: 'PK Wide', sans-serif;
+  --text: 'Titillium Web', 'Titillium Fallback', sans-serif;
   --display-style: normal;
-  /* F1 Display Wide stand-in: Anybody at full width, upright, tight tracking. */
+  /* Width axis for variable display faces (the Formula1 fonts, if installed); PK Wide is drawn wide. */
   --wide: 150;
   --wide-mid: 130;
   --ease: cubic-bezier(.2,.9,.2,1);
@@ -537,7 +545,8 @@ main:focus { outline: none; }
 
 /* Elements that animate in are hidden only when JS is running to reveal them. */
 .js .hero-name span { opacity: var(--nameo,0); }
-.js .btn-ghost, .js .stripe, .js .hero-meta { opacity: var(--heroo,0); }
+/* The job title is on screen from the first paint; only the stripe and Replay wait for the name. */
+.js .btn-ghost, .js .stripe { opacity: var(--heroo,0); }
 .js .btn-motion { opacity: 1; }
 
 /* Windows High Contrast / forced colours: drop clipped-gradient text and decorative layers. */

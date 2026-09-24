@@ -668,19 +668,32 @@ void main(){
 }`;
 
 // ---------- GL helpers ----------
+// Shaders compile and link on the driver's threads (KHR_parallel_shader_compile); status is read only
+// once the driver reports completion, so building all twenty programs never stalls the main thread.
 function compile(type, src) {
   const s = gl.createShader(type);
   gl.shaderSource(s, src); gl.compileShader(s);
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) + '\n' + src.split('\n').map((l, i) => (i + 1) + ': ' + l).join('\n'));
   return s;
 }
-function program(vs, fs, varyings) {
-  const p = gl.createProgram();
-  gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
-  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+function link(vs, fs, varyings) {
+  const p = gl.createProgram(), v = compile(gl.VERTEX_SHADER, vs), f = compile(gl.FRAGMENT_SHADER, fs);
+  gl.attachShader(p, v); gl.attachShader(p, f);
   if (varyings) gl.transformFeedbackVaryings(p, varyings, gl.SEPARATE_ATTRIBS);
   gl.linkProgram(p);
-  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  p.src = [[v, vs], [f, fs]];
+  return p;
+}
+async function programs(specs) {
+  const pending = Object.entries(specs).map(([k, a]) => [k, link(...a)]);
+  const ext = gl.getExtension('KHR_parallel_shader_compile');
+  if (ext) while (pending.some(([, p]) => !gl.getProgramParameter(p, ext.COMPLETION_STATUS_KHR))) await new Promise(r => setTimeout(r, 16));
+  return Object.fromEntries(pending.map(([k, p]) => [k, program(p)]));
+}
+function program(p) {
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    const bad = p.src.find(([sh]) => !gl.getShaderParameter(sh, gl.COMPILE_STATUS));
+    throw new Error(bad ? gl.getShaderInfoLog(bad[0]) + '\n' + bad[1].split('\n').map((l, i) => (i + 1) + ': ' + l).join('\n') : gl.getProgramInfoLog(p));
+  }
   const u = {};
   const n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
   for (let i = 0; i < n; i++) { const name = gl.getActiveUniform(p, i).name.replace(/\[0\]$/, ''); u[name] = gl.getUniformLocation(p, name); }
@@ -723,7 +736,8 @@ function draw(t) {
 function loadSprite(name, key, repeat) {
   const img = new Image();
   img.decoding = 'async';
-  img.onload = () => {
+  img.src = ASSETS + name;
+  return img.decode().then(() => {
     if (!glOK) return;
     const t = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, t);
@@ -737,9 +751,7 @@ function loadSprite(name, key, repeat) {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
     TEX[key] = t;
-  };
-  img.onerror = () => {};
-  img.src = ASSETS + name;
+  }, () => {});
 }
 
 function glyphTexture(w, h) {
@@ -781,31 +793,34 @@ function sizes() {
     cw: Math.round(W * dpr), ch: Math.round(H * dpr), dpr };
 }
 
-function initGL() {
+async function initGL() {
   gl = getGL(canvas);
   if (!gl) return false;
   const rg = testFormat(gl.RG16F, gl.RG), r1 = testFormat(gl.R16F, gl.RED), rgba = testFormat(gl.RGBA16F, gl.RGBA);
   if (!rgba) return false;
   fmt = { rgba: [gl.RGBA16F, gl.RGBA], rg: rg ? [gl.RG16F, gl.RG] : [gl.RGBA16F, gl.RGBA], r: r1 ? [gl.R16F, gl.RED] : (rg ? [gl.RG16F, gl.RG] : [gl.RGBA16F, gl.RGBA]) };
   try {
-    R = {
-      mask: program(VS_QUAD, FS_MASK), advVel: program(VS_QUAD, FS_ADV_VEL), curl: program(VS_QUAD, FS_CURL),
-      vort: program(VS_QUAD, FS_VORT), div: program(VS_QUAD, FS_DIV), pres: program(VS_QUAD, FS_PRES),
-      grad: program(VS_QUAD, FS_GRAD), dyeA: program(VS_QUAD, FS_DYE_A), dyeB: program(VS_QUAD, FS_DYE_B),
-      advUV: program(VS_QUAD, FS_ADV_UV), glow: program(VS_QUAD, FS_GLOW), prefill: program(VS_QUAD, FS_PREFILL),
-      copy: program(VS_QUAD, FS_COPY), fill: program(VS_QUAD, FS_FILL), render: program(VS_QUAD, FS_RENDER),
-      pupd: program(VS_PUPD, FS_NULL, ['vS']), seed: program(VS_QUAD, FS_SEED), jfa: program(VS_QUAD, FS_JFA), pdraw: program(VS_PDRAW, FS_PDRAW), puff: program(VS_PUFF, FS_PUFF),
-    };
+    R = await programs({
+      mask: [VS_QUAD, FS_MASK], advVel: [VS_QUAD, FS_ADV_VEL], curl: [VS_QUAD, FS_CURL],
+      vort: [VS_QUAD, FS_VORT], div: [VS_QUAD, FS_DIV], pres: [VS_QUAD, FS_PRES],
+      grad: [VS_QUAD, FS_GRAD], dyeA: [VS_QUAD, FS_DYE_A], dyeB: [VS_QUAD, FS_DYE_B],
+      advUV: [VS_QUAD, FS_ADV_UV], glow: [VS_QUAD, FS_GLOW], prefill: [VS_QUAD, FS_PREFILL],
+      copy: [VS_QUAD, FS_COPY], fill: [VS_QUAD, FS_FILL], render: [VS_QUAD, FS_RENDER],
+      pupd: [VS_PUPD, FS_NULL, ['vS']], seed: [VS_QUAD, FS_SEED], jfa: [VS_QUAD, FS_JFA], pdraw: [VS_PDRAW, FS_PDRAW], puff: [VS_PUFF, FS_PUFF],
+    });
   } catch (e) { console.warn('[windtunnel] shader build failed', e); return false; }
   R.vao = gl.createVertexArray();
   R.tf = gl.createTransformFeedback();
   glOK = true;
   for (const k in TEX) delete TEX[k];
   // phones draw puffs at ~105 CSS px: a 128 px-cell atlas carries every visible detail at a quarter the bytes
-loadSprite(tierIx === 0 || Math.min(innerWidth, innerHeight) < 600 ? 'smoke-atlas-sm.webp' : 'smoke-atlas.webp', 'atlas', false);
-  loadSprite('motes.webp', 'motes', false);
-  loadSprite('wisp.webp', 'wisp', true);
+  const sprites = Promise.all([
+    loadSprite(tierIx === 0 || Math.min(innerWidth, innerHeight) < 600 ? 'smoke-atlas-sm.webp' : 'smoke-atlas.webp', 'atlas', false),
+    loadSprite('motes.webp', 'motes', false),
+    loadSprite('wisp.webp', 'wisp', true),
+  ]);
   build(null);
+  await sprites;
   return true;
 }
 
@@ -1059,7 +1074,7 @@ function frame(now) {
   const base = Math.max(1.1, Math.min(2.6, dims.W / 600));
   window.__windFlow = { speed: Math.min(1, freeStream() / (base * 4)), gust: Math.min(1, st.gust) };
   render();
-  if (!shown) { shown = true; canvas.style.opacity = '1'; }
+  if (!shown) { shown = true; canvas.style.opacity = '1'; ready(); }
   // adaptive quality: shed pressure iterations and particle draws if frames run long
   frameEma += (dt - frameEma) * 0.1;
   slow = frameEma > 0.022 ? slow + 1 : Math.max(0, slow - 2);
@@ -1084,6 +1099,7 @@ function still(steps) {
   render();
   canvas.style.opacity = '1';
   window.__windFlow = { speed: 0, gust: 0 };    // frozen: car.js should idle too
+  ready();
 }
 
 // ---------- wiring ----------
@@ -1115,7 +1131,7 @@ const mo = new MutationObserver(() => setFrozen(userPaused()));
 mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-motion'] });
 on(document, 'visibilitychange', () => { document.hidden ? stop() : start(); });
 on(canvas, 'webglcontextlost', e => { e.preventDefault(); stop(); glOK = false; });
-on(canvas, 'webglcontextrestored', () => { if (initGL()) { frozen ? still(60) : start(); } });
+on(canvas, 'webglcontextrestored', () => { initGL().then(ok => { if (ok) frozen ? still(60) : start(); }); });
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => alive && measure());
 const ro = new ResizeObserver(queueMeasure); ro.observe(document.body);
 const ival = setInterval(() => { if (!document.hidden) measure(); }, 3000);   // safety net for late layout shifts
@@ -1177,13 +1193,17 @@ function fallback2D() {
 }
 
 // ---------- boot ----------
+// main.js holds the start lights until `wind:ready` (first frame on screen, or no smoke at all).
+let readySent = false;
+function ready() { if (!readySent) { readySent = true; dispatchEvent(new Event('wind:ready')); } }
 measure();
 try {
-  if (initGL()) {
+  if (await initGL()) {
     if (frozen) still(90);
     else { for (let i = 0; i < (tierIx ? 30 : 12); i++) { st.time += 1 / 60; step(1 / 60, 0); } start(); }
-  } else { glOK = false; fb = fallback2D(); }
+  } else { glOK = false; fb = fallback2D(); ready(); }
 } catch (e) {
   console.warn('[windtunnel] disabled', e);
   glOK = false; try { fb = fallback2D(); } catch (e2) {}
+  ready();
 }

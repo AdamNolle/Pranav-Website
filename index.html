@@ -22,19 +22,23 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Pranav Kondapaneni's name in chrome lettering beside his blue-and-black F1 car in a wind-tunnel studio.">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Anybody:ital,wdth,wght@0,50..150,400..900;1,50..150,400..900&amp;family=Titillium+Web:ital,wght@0,400;0,600;0,700;0,900;1,700;1,900&amp;family=JetBrains+Mono:wght@400;600;700&amp;display=swap" rel="stylesheet">
 <script>document.documentElement.classList.add('js');try{if(localStorage.getItem('motion')==='paused')document.documentElement.dataset.motion='paused'}catch(e){}</script>
+<!-- Everything is same-origin. Only what the first paint needs is fetched up front; main.js starts the
+     car's downloads (bundle, model, decoder) together right after the first paint. -->
 <link rel="preload" href="assets/fonts/pk-wide.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="assets/fonts/f1.css">
 <script type="importmap">
 { "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.186.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.0/examples/jsm/"
+  "three": "./vendor/three-car.min.js",
+  "three/addons/loaders/GLTFLoader.js": "./vendor/three-car.min.js",
+  "three/addons/loaders/DRACOLoader.js": "./vendor/three-car.min.js",
+  "three/addons/utils/BufferGeometryUtils.js": "./vendor/three-car.min.js",
+  "three/addons/postprocessing/EffectComposer.js": "./vendor/three-car.min.js",
+  "three/addons/postprocessing/RenderPass.js": "./vendor/three-car.min.js",
+  "three/addons/postprocessing/UnrealBloomPass.js": "./vendor/three-car.min.js",
+  "three/addons/postprocessing/OutputPass.js": "./vendor/three-car.min.js"
 } }
 </script>
 </head>
@@ -92,7 +96,7 @@
       <div aria-hidden="true" data-word="KONDAPANENI"></div>
     </h1>
     <div class="stripe" data-stripe aria-hidden="true"></div>
-    <p class="hero-meta" data-heroin>
+    <p class="hero-meta">
       <span>Software Engineer · J.B. Hunt Transport</span>
       <span>CS @ Georgia Tech</span>
     </p>
@@ -107,7 +111,7 @@
           <span class="portrait-number" aria-hidden="true">PK</span>
           <picture>
             <source srcset="assets/pranav.webp" type="image/webp">
-            <img src="assets/pranav.png" width="1000" height="1000" alt="Portrait of Pranav Kondapaneni" decoding="async">
+            <img src="assets/pranav.png" width="1000" height="1000" alt="Portrait of Pranav Kondapaneni" decoding="async" loading="lazy">
           </picture>
         </div>
         <div class="portrait-caption mono" aria-hidden="true"><span>PK</span><span>J.B. Hunt Transport</span></div>
@@ -137,17 +141,17 @@
       <li class="plate stint" data-rev data-metal data-obstacle>
         <div class="stint-pos lead"><span class="sr-only">Position </span>P1</div>
         <div><h3 class="stint-role">Software Engineer I</h3><div class="stint-team">J.B. Hunt Transport Services, Inc.</div></div>
-        <div class="stint-status mono"><img class="org-logo" src="assets/logos/jbhunt-white.webp" alt="" width="160" height="40"><span class="live">On track<span class="sr-only"> (current role)</span></span></div>
+        <div class="stint-status mono"><img class="org-logo" loading="lazy" src="assets/logos/jbhunt-white.webp" alt="" width="160" height="40"><span class="live">On track<span class="sr-only"> (current role)</span></span></div>
       </li>
       <li class="plate stint" data-rev data-metal data-obstacle>
         <div class="stint-pos"><span class="sr-only">Position </span>P2</div>
         <div><h3 class="stint-role">Application Development Intern</h3><div class="stint-team">J.B. Hunt Transport Services, Inc.</div></div>
-        <div class="stint-status mono"><img class="org-logo" src="assets/logos/jbhunt-white.webp" alt="" width="160" height="40"><span>Finished</span></div>
+        <div class="stint-status mono"><img class="org-logo" loading="lazy" src="assets/logos/jbhunt-white.webp" alt="" width="160" height="40"><span>Finished</span></div>
       </li>
       <li class="plate stint" data-rev data-metal data-obstacle>
         <div class="stint-pos"><span class="sr-only">Position </span>P3</div>
         <div><h3 class="stint-role">Peer Learning Assistant</h3><div class="stint-team">Missouri University of Science and Technology</div></div>
-        <div class="stint-status mono"><img class="org-logo tall" src="assets/logos/missouri-st-white.webp" alt="" width="160" height="40"><span>Finished</span></div>
+        <div class="stint-status mono"><img class="org-logo tall" loading="lazy" src="assets/logos/missouri-st-white.webp" alt="" width="160" height="40"><span>Finished</span></div>
       </li>
     </ol>
   </section>
@@ -181,12 +185,12 @@
     <h2 class="section-title chrome-text" id="academy-title" data-rev data-obstacle>Academy</h2>
     <div class="degrees">
       <div class="plate degree" data-rev data-metal data-obstacle>
-        <div class="degree-top"><p class="kicker" aria-hidden="true">M.S.</p><img class="org-logo" src="assets/logos/georgia-tech-white.webp" alt="" width="160" height="40"></div>
+        <div class="degree-top"><p class="kicker" aria-hidden="true">M.S.</p><img class="org-logo" loading="lazy" src="assets/logos/georgia-tech-white.webp" alt="" width="160" height="40"></div>
         <h3 class="degree-field"><span class="sr-only">M.S. </span>Computer Science</h3>
         <div class="degree-meta"><span>Georgia Institute of Technology</span><span class="mono">Jan 2025 – Present</span></div>
       </div>
       <div class="plate degree" data-rev data-metal data-obstacle>
-        <div class="degree-top"><p class="kicker" aria-hidden="true">B.S.</p><img class="org-logo" src="assets/logos/missouri-st-white.webp" alt="" width="160" height="40"></div>
+        <div class="degree-top"><p class="kicker" aria-hidden="true">B.S.</p><img class="org-logo" loading="lazy" src="assets/logos/missouri-st-white.webp" alt="" width="160" height="40"></div>
         <h3 class="degree-field"><span class="sr-only">B.S. </span>Computer Science</h3>
         <div class="degree-meta"><span>Missouri University of Science and Technology</span><span class="mono">Aug 2021 – Dec 2024</span></div>
       </div>

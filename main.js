@@ -81,7 +81,8 @@
     nameEl.style.removeProperty('--name-size');
     hw = nameEl.offsetWidth;
     nameEl.style.setProperty('--hw', hw + 'px');
-    letters.forEach(l => l.style.setProperty('--ox', l.offsetLeft + 'px'));
+    const xs = letters.map(l => l.offsetLeft);           // read all, then write: one layout, not sixteen
+    letters.forEach((l, i) => l.style.setProperty('--ox', xs[i] + 'px'));
   }
 
   // Moves each metal plate's highlight toward the pointer; on touch it drifts on its own.
@@ -137,6 +138,9 @@
   const lightsLabel = root.querySelector('[data-lights-label]');
   const off = () => pods.flat().forEach(el => { el.style.background = '#2a0a08'; el.style.boxShadow = 'none'; });
   let introLive = false;
+  // <html data-intro>: hold (lights waiting for the grid) -> live (intro playing) -> done. car.js and the
+  // staged start-up below keep heavy main-thread work out of `live`.
+  const setIntro = v => { document.documentElement.dataset.intro = v; if (v === 'done') dispatchEvent(new Event('intro:done')); };
   // Replay Intro plays even with motion paused (it's an explicit request); page load doesn't.
   function race(replay) {
     timers.forEach(clearTimeout); timers = [];
@@ -149,6 +153,7 @@
     dispatchEvent(new Event('race:reset'));
     if (reduce || (motionPaused() && !replay)) { lightsLabel.textContent = 'LIGHTS OUT'; return land(false); }
     introLive = true;
+    setIntro('live');
     if (!CONFIG.startLights) { timers.push(setTimeout(fly, 150)); return; }
     pods.forEach((p, i) => timers.push(setTimeout(() => {
       p.forEach(el => { el.style.background = '#ff2415'; el.style.boxShadow = '0 0 18px 4px rgba(255,36,21,0.6), inset 0 -3px 6px rgba(0,0,0,0.35)'; });
@@ -164,6 +169,7 @@
   // Name, stripe and meta in their final place; `animate` plays the landing flourish.
   function land(animate) {
     introLive = false;
+    setIntro('done');
     root.style.setProperty('--nameo', '1'); root.style.setProperty('--heroo', '1');
     nameEl.setAttribute('data-landed', '');
     if (!animate) return;
@@ -361,22 +367,52 @@
   document.addEventListener('touchstart', skipIntro, { passive: true });
   addEventListener('keydown', e => { if (!['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) skipIntro(); });
 
-  // ---------- staged GPU start-up ----------
-  // The three WebGL layers each compile shaders and upload textures; starting them together
-  // blocks the main thread for over a second on phones. Stage them after first paint, and
-  // leave the metal plates to the lightweight CSS finish on phones and touch devices.
+  // ---------- staged start-up: the grid forms before the lights go on ----------
+  // Each WebGL layer compiles shaders, builds geometry and uploads textures once, which is hundreds of
+  // ms of main-thread work on a slow phone. It all happens while the start lights hold (the name's
+  // silhouette and the job title are already on screen): car first, then the smoke, one at a time.
+  // The intro then plays on a quiet main thread. If the grid isn't ready by GRID_CAP the intro starts
+  // anyway and whatever is still loading waits until it has landed. The metal plates (desktop only;
+  // phones keep the CSS finish) are below the fold, so they start after the intro.
+  const GRID_CAP = 2600;                                   // ms from navigation start
   const phone = matchMedia('(max-width: 760px), (pointer: coarse)').matches;
   const idle = f => ('requestIdleCallback' in window ? requestIdleCallback(f, { timeout: 1500 }) : setTimeout(f, 200));
-  const load = src => import(src).catch(err => console.warn('[pk] optional layer failed:', src, err));
+  const wait = ms => new Promise(r => setTimeout(r, Math.max(0, ms)));
+  const once = ev => new Promise(r => addEventListener(ev, r, { once: true }));
+  const carReady = once('car:ready'), windReady = once('wind:ready'), introDone = once('intro:done');
+  let gridGo;
+  const gridStart = new Promise(r => { gridGo = r; });     // settles once the hold ends (lights on, or skipped)
+  const load = (src, readyEvent) => import(src).catch(err => {
+    console.warn('[pk] optional layer failed:', src, err);
+    if (readyEvent) dispatchEvent(new Event(readyEvent));   // a missing layer never holds the lights
+  });
+  const hint = (rel, href) => {
+    const l = document.createElement('link');
+    l.rel = rel; l.href = href;
+    document.head.appendChild(l);
+  };
   requestAnimationFrame(() => setTimeout(() => {
-    load('./car.js');
-    setTimeout(() => idle(() => load('./windtunnel.js')), phone ? 1400 : 500);
-    if (!phone) setTimeout(() => idle(() => load('./metal.js')), 1100);
+    // After the first paint, so none of this competes with the page's own CSS and fonts. The three.js
+    // bundle downloads alongside car.js (not after it), and ahead of the model: car.js starts the model
+    // and decoder downloads as soon as it runs, which on a slow connection is still during the hold.
+    hint('modulepreload', 'vendor/three-car.min.js');
+    hint('modulepreload', 'windtunnel.js');
+    load('./car.js', 'car:ready');
+    Promise.race([carReady, gridStart])
+      .then(() => (document.documentElement.dataset.intro === 'live' ? introDone : null))
+      .then(() => idle(() => load('./windtunnel.js', 'wind:ready')));
+    if (!phone) introDone.then(() => Promise.race([windReady, wait(4000)])).then(() => idle(() => load('./metal.js')));
   }, 0));
 
   measure();
   buildRedline();
   initReveals();
   requestAnimationFrame(loop);
-  race();
+  if (reduce || motionPaused()) { race(); gridGo(); }       // static hero: lands at once
+  else {
+    introLive = true;                                      // a tap, scroll or key during the hold lands it
+    setIntro('hold');
+    Promise.race([Promise.all([carReady, windReady]), wait(GRID_CAP - performance.now()), introDone])
+      .then(() => { if (document.documentElement.dataset.intro === 'hold') race(); gridGo(); });
+  }
 })();

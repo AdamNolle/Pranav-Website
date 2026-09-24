@@ -17,6 +17,14 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
 5. **Texture quality everywhere:** (2× DPR pass 2026-09-23: logos, type, metal and portrait are crisp; the car backdrop was beige and is now cool navy. Suspension members now use 28-segment profiles and the GLB stores normals at 11 bits, so the banding is gone.) no visible tiling, banding, aliasing, blur or stretching on the car, metal cards, smoke sprites, logos or portrait. Check each at 2× DPR.
 
 ## Done (2026-09-24)
+- **First-load smoothness on slow devices** (profiled with DevTools traces at 4× CPU, fast network and slow 4G, phone and laptop):
+  - The start lights hold until the car and the smoke are ready (capped at 2.6 s), so the intro runs on an idle main thread.
+  - The job title shows from the first paint.
+  - Three.js is a vendored tree-shaken bundle (`tools/build_three.mjs`); fonts and the Draco decoder are self-hosted, so there are no third-party origins. The Anybody fallback download is gone, because PK Wide gained `( ) →`.
+  - The smoke compiles its 20 programs in parallel. The car compiles the composer's program variants and runs a warm-up frame for the shadow, bloom and mask programs. Its build and texture uploads yield between steps, and the environment bake runs at the first quiet moment.
+  - Result: 0 frames over 50 ms during the intro (was 5 on phone and 9 on laptop, up to 567 ms); first paint 384 → 184 ms; JS 492 → 212 KB. Details in the README.
+  - `tools/serve.py` now gzips like GitHub Pages, so local timings are realistic.
+- **KTX2 (closed, not adopted):** `basis_universal` is installed. On the phone textures, ETC1S matched WebP for base colour (78 KB), and the normal maps grew 6–9× (9 → 51 KB, 18 → 161 KB) in UASTC. The transcoder adds 585 KB. It would slow the first load. Revisit only if GPU memory becomes a problem.
 - **Apple HIG pass** (checked against the guideline text for Accessibility, Typography, Layout, Motion, Buttons, Color and Writing):
   - 44 pt hit regions on the desktop nav links; a press state on every control (iOS `:active` enabled); an 11 pt minimum on phones; title-case verb labels ("Replay Intro", "Pause Motion", "Back to Top") and a drawn replay glyph.
   - Stints, skills and club pills no longer move or light up on hover, since they aren't controls.
@@ -86,5 +94,4 @@ Work top to bottom. After every item: take a headless-Brave screenshot at 1440×
 - **Car, note:** desktop fps benchmarks are unreliable while Adam's own Brave has a heavy GPU tab open, so use A/B runs. Rebuilds aren't byte-identical: the livery atlas packs a few small islands differently each run, but UVs and textures always export together.
 - **Dead space:** section rhythm is tightened (page 5.7 → 5.3 screens) and the Driver column has a telemetry strip; remaining candidates are the hero's bottom-right and the Academy/Radio spacing.
 - Car: proportions, fin, wing, halo and number placement now match 2024-25 references. Further realism needs a specific target (e.g. a named car and angle to match), not open-ended tweaks.
-- **Needs Adam's OK:** install a KTX2 encoder (`brew install ktx`) to cut car and metal texture weight.
-- Car textures: try KTX2/Basis once an encoder is installed (livery set is WebP at 4K wide).
+- **Next lever for load time:** join meshes by material at export (Blender) instead of at runtime. That would remove ~150 ms at 4× CPU of model building, now hidden in the hold on fast networks and split into ≤ 85 ms chunks after the intro on slow ones.

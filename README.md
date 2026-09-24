@@ -81,11 +81,28 @@ The site targets **WCAG 2.2 AA** and follows Apple's [Human Interface Guidelines
 
 ## Performance
 
-Measured on a 2× retina desktop and on a 3× phone with 4× CPU throttling:
+The first load is staged so the intro always plays smoothly, even on slow phones:
 
-- Hero at **60 fps** on phones and ~56 fps on a retina desktop; scrolled sections hold 60 fps.
-- **LCP ≈ 0.7 s** on a throttled phone, **CLS 0.006**. The name's silhouette paints on the first frame.
-- The three WebGL layers start in stages after first paint; the car stops rendering when scrolled away, and the smoke and metal idle in background tabs.
+1. **First paint** needs only the HTML, the CSS and two self-hosted fonts. The name's silhouette and the job title appear immediately.
+2. **The grid forms.** While the start lights hold, the car and the smoke each compile their shaders, build geometry and upload textures, one after the other.
+3. **The intro plays** on an idle main thread. On a slow connection the lights start anyway after 2.6 s, and anything still loading waits until the name has landed.
+
+Measured on a phone with 4× CPU throttling, before → after:
+
+| | Before | After |
+| --- | --- | --- |
+| First paint (fast network) | 384 ms | **184 ms** |
+| Frames over 50 ms during the intro | 5 (up to 200 ms) | **0** |
+| Same on a 4×-throttled laptop | 9 (up to 567 ms) | **0** |
+| Layout shift (slow 4G) | 0.0071 | **0** |
+| JavaScript downloaded | 492 KB | **212 KB** |
+| Requests / third-party origins | 38 / 3 | **21 / 0** |
+
+How:
+- three.js ships as a tree-shaken bundle of only what `car.js` uses (`vendor/three-car.min.js`, 165 KB gzip, replacing a 430 KB CDN import chain).
+- Fonts are self-hosted with metric-matched fallbacks, so nothing reflows when they swap in.
+- Shaders compile in parallel off the main thread (`KHR_parallel_shader_compile` / `compileAsync`), and one warm-up frame covers the shadow and post-processing programs.
+- Building the car and uploading its textures yield between steps, so none of it becomes one long frame.
 
 ## Run it locally
 
@@ -93,7 +110,7 @@ Measured on a 2× retina desktop and on a 3× phone with 4× CPU throttling:
 python3 tools/serve.py        # → http://127.0.0.1:8765/
 ```
 
-It's plain HTML, CSS and ES modules, so there's nothing to install. (`python3 -m http.server` works too, but it drops some of the parallel texture requests.)
+It's plain HTML, CSS and ES modules, so there's nothing to install. The dev server gzips responses the way GitHub Pages does, so local load timings match production. (`python3 -m http.server` works too, but it drops some of the parallel texture requests.)
 
 ## How it's built
 
@@ -104,6 +121,7 @@ It's plain HTML, CSS and ES modules, so there's nothing to install. (`python3 -m
 | Wind-tunnel smoke and tracers (WebGL2 stable fluids) | `windtunnel.js` ← sprites from `blender/build_smoke.py` |
 | Brushed-metal plates (WebGL, anisotropic GGX) | `metal.js` ← textures from `blender/build_metal.py` |
 | PK Wide, the display typeface | `assets/fonts/pk-wide*.woff2`, drawn in code by `tools/build_font.py` |
+| three.js subset + Draco decoder | `vendor/`, built by `tools/build_three.mjs` from what `car.js` imports |
 | Design contract and backlog | `DESIGN.md`, `BACKLOG.md` |
 
 <details>
@@ -124,7 +142,12 @@ blender -b --factory-startup -P blender/build_smoke.py   # smoke sprite atlas
 
 pip install fonttools brotli
 python3 tools/build_font.py                             # PK Wide (regular + italic)
+
+npm i --no-save three@0.186.0 esbuild
+node tools/build_three.mjs                              # vendor/three-car.min.js + vendor/draco/
 ```
+
+Re-run `build_three.mjs` whenever `car.js` starts using another part of three.js; it reads the list from `car.js` itself.
 
 </details>
 
@@ -149,6 +172,7 @@ This writes `assets/fonts/*.woff2` and `assets/fonts/f1.css`. The Formula1 typef
 - **Photo** © Pranav Kondapaneni. It was upscaled 4× with Real-ESRGAN and cut out with BiRefNet-portrait.
 - **Logos** are the trademarks of their owners and identify Pranav's employer and schools. Sources are listed in [`assets/logos/SOURCES.md`](assets/logos/SOURCES.md).
 - **Car, smoke, metal and typeface** are original to this site.
+- **Titillium Web** and **JetBrains Mono** are self-hosted under the SIL Open Font License (`assets/fonts/OFL-*.txt`).
 - Built with [three.js](https://threejs.org) and [Blender](https://www.blender.org).
 
 <p align="center">
